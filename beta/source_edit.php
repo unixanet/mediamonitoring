@@ -6,6 +6,7 @@ $id = (int)($_GET['id'] ?? 0);
 $user = $id ? require_perm('sources.manage') : require_perm('source.add');
 $intervals = [60 => '1 minute', 120 => '2 minutes', 180 => '3 minutes', 300 => '5 minutes', 600 => '10 minutes', 900 => '15 minutes'];
 
+$dedupModes = ['url' => 'By article URL', 'guid' => 'By feed GUID', 'title' => 'By title', 'title_date' => 'By title + publication day', 'content' => 'By article text'];
 $s = ['name' => '', 'type' => 'rss', 'feed_url' => '', 'download_mode' => 'text', 'dedup_by' => 'url', 'category_id' => null,
       'min_input' => utc_to_ui_input(gmdate('Y-m-d H:i:s')), 'check_interval_sec' => 120, 'is_active' => 1];
 
@@ -32,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $s['feed_url'] = trim((string)($_POST['feed_url'] ?? ''));
     $s['type'] = in_array($_POST['type'] ?? '', ['rss', 'html', 'social'], true) ? $_POST['type'] : 'rss';
     $s['download_mode'] = ($_POST['download_mode'] ?? '') === 'text_photo' ? 'text_photo' : 'text';
-    $s['dedup_by'] = ($_POST['dedup_by'] ?? '') === 'guid' ? 'guid' : 'url';
+    $s['dedup_by'] = isset($dedupModes[$_POST['dedup_by'] ?? '']) ? $_POST['dedup_by'] : 'url';
     $s['check_interval_sec'] = isset($intervals[(int)($_POST['check_interval_sec'] ?? 0)]) ? (int)$_POST['check_interval_sec'] : 120;
     $s['is_active'] = isset($_POST['is_active']) ? 1 : 0;
     $s['min_input'] = (string)($_POST['min_published_at'] ?? '');
@@ -160,10 +161,11 @@ if ($errors): ?>
     <div>
       <label class="<?= ui('lbl') ?>" for="dedup_by"><?= e(t('Duplicate check (within this source)')) ?></label>
       <select id="dedup_by" name="dedup_by" class="<?= ui('inp') ?>">
-        <option value="url" <?= $s['dedup_by'] === 'url' ? 'selected' : '' ?>><?= e(t('By article URL')) ?></option>
-        <option value="guid" <?= $s['dedup_by'] === 'guid' ? 'selected' : '' ?>><?= e(t('By feed GUID')) ?></option>
+        <?php foreach ($dedupModes as $v => $l): ?>
+          <option value="<?= $v ?>" <?= $s['dedup_by'] === $v ? 'selected' : '' ?>><?= e(t($l)) ?></option>
+        <?php endforeach; ?>
       </select>
-      <p class="mt-1.5 text-sm font-medium"><?= e(t('Always on: this source never stores the same article twice. Other sources may.')) ?></p>
+      <p class="mt-1.5 text-sm font-medium"><?= e(t('Always on: this source never stores the same article twice. Other sources may. Changing the method applies to new articles only.')) ?></p>
     </div>
     <label class="flex items-center gap-3 self-start sm:mt-7 rounded-lg border border-black px-4 py-2.5 text-sm font-semibold cursor-pointer">
       <input type="checkbox" name="is_active" value="1" <?= $s['is_active'] ? 'checked' : '' ?> class="h-4 w-4 accent-black">

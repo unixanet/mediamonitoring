@@ -4,10 +4,18 @@ require __DIR__ . '/lib/layout.php';
 $user = require_perm('sources.view');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
-    if (isset($_POST['toggle'])) {            // пауза / возобновление
-        $id = (int)$_POST['toggle'];
-        cdb()->query("UPDATE sources SET is_active = 1 - is_active, next_check_at = NOW() WHERE id = $id");
-        flash_set('ok', 'Source updated.');
+    if (isset($_POST['start'])) {             // старт: включить и опросить сразу
+        $id = (int)$_POST['start'];
+        cdb()->query("UPDATE sources SET is_active = 1, next_check_at = NOW() WHERE id = $id");
+        flash_set('ok', 'Source started. It will be fetched right away.');
+    } elseif (isset($_POST['fetch'])) {       // опросить сейчас, не дожидаясь интервала
+        $id = (int)$_POST['fetch'];
+        cdb()->query("UPDATE sources SET next_check_at = NOW() WHERE id = $id AND is_active = 1");
+        flash_set('ok', 'Fetch requested. The crawler will pick it up right away.');
+    } elseif (isset($_POST['pause'])) {
+        $id = (int)$_POST['pause'];
+        cdb()->query("UPDATE sources SET is_active = 0 WHERE id = $id");
+        flash_set('ok', 'Source paused.');
     } elseif (isset($_POST['delete'])) {      // удаление источника вместе со статьями
         $id = (int)$_POST['delete'];
         set_time_limit(300);
@@ -53,7 +61,16 @@ function src_actions(array $s): void
     <a class="<?= ui('btn2') ?> !px-3 !py-1.5" href="/articles.php?source=<?= (int)$s['id'] ?>"><?= e(t('Articles')) ?></a>
     <a class="<?= ui('btn2') ?> !px-3 !py-1.5" href="/source_edit.php?id=<?= (int)$s['id'] ?>"><?= e(t('Edit')) ?></a>
     <form method="post"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
-      <button name="toggle" value="<?= (int)$s['id'] ?>" class="<?= ui('btn2') ?> !px-3 !py-1.5"><?= e(t($s['is_active'] ? 'Pause' : 'Resume')) ?></button></form>
+      <?php if ($s['is_active']): ?>
+        <button name="fetch" value="<?= (int)$s['id'] ?>" class="<?= ui('btn') ?> !px-3 !py-1.5">▶ <?= e(t('Fetch now')) ?></button>
+      <?php else: ?>
+        <button name="start" value="<?= (int)$s['id'] ?>" class="<?= ui('btn') ?> !px-3 !py-1.5">▶ <?= e(t('Start')) ?></button>
+      <?php endif; ?>
+    </form>
+    <?php if ($s['is_active']): ?>
+    <form method="post"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
+      <button name="pause" value="<?= (int)$s['id'] ?>" class="<?= ui('btn2') ?> !px-3 !py-1.5">❚❚ <?= e(t('Pause')) ?></button></form>
+    <?php endif; ?>
     <form method="post" onsubmit="return confirm('<?= e(t('Delete this source and ALL its articles? This cannot be undone.')) ?>')">
       <input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
       <button name="delete" value="<?= (int)$s['id'] ?>" class="<?= ui('btnd') ?> !px-3 !py-1.5"><?= e(t('Delete')) ?></button></form>

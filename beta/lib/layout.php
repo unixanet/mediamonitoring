@@ -51,7 +51,7 @@ function app_start(string $title, string $active, array $user): void
 <div class="min-h-screen lg:flex">
   <div id="overlay" class="hidden fixed inset-0 z-30 bg-black/50 lg:hidden"></div>
 
-  <aside id="sidebar" class="fixed lg:sticky top-0 z-40 h-screen w-72 shrink-0 -translate-x-full lg:translate-x-0 transition-transform bg-white border-r border-black flex flex-col">
+  <aside id="sidebar" class="fixed lg:sticky top-0 z-40 h-screen w-72 shrink-0 -translate-x-full lg:translate-x-0 transition-transform bg-white border-r border-ms-mid shadow-[6px_0_28px_-14px_rgba(0,120,212,.35)] flex flex-col">
     <div class="px-5 py-5 flex items-center gap-3 border-b border-black/10">
       <div class="h-10 w-10 rounded-xl bg-ms text-white border border-black shadow-[0_2px_0_0_#000] flex items-center justify-center text-lg font-bold">M</div>
       <div class="leading-tight">
@@ -64,8 +64,14 @@ function app_start(string $title, string $active, array $user): void
         if ($n[0] === 'group') {
             $kids = array_filter($n[3], fn($k) => can($k[3]));
             if (!$kids) continue;
-            echo '<div class="pt-3 pb-1 px-3.5 text-xs font-bold uppercase tracking-wide text-black">' . e(t($n[1])) . '</div>';
+            $hasActive = (int)in_array($active, array_column($kids, 0), true);
+            echo '<div data-group="' . e(strtolower($n[1])) . '" data-active="' . $hasActive . '">';
+            echo '<button type="button" aria-expanded="false" class="grp flex w-full items-center justify-between gap-3 rounded-lg border border-transparent px-3.5 py-2.5 text-sm font-semibold text-black hover:bg-ms-light transition">'
+                . '<span class="flex items-center gap-3"><svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="' . e($n[2]) . '"/></svg>' . e(t($n[1])) . '</span>'
+                . '<span class="grp-ico w-5 text-center text-lg font-bold leading-none text-ms">+</span></button>';
+            echo '<div class="grp-body hidden mt-1 space-y-1">';
             foreach ($kids as $k) echo nav_link($k[1], $k[2], $k[0] === $active, '', true);
+            echo '</div></div>';
             continue;
         }
         if (!can($n[3])) continue;
@@ -85,7 +91,7 @@ function app_start(string $title, string $active, array $user): void
   </aside>
 
   <div class="flex-1 min-w-0 flex flex-col">
-    <header class="sticky top-0 z-20 bg-white border-b border-black flex items-center gap-3 px-4 sm:px-8 py-3">
+    <header class="sticky top-0 z-20 bg-white border-b border-ms-mid shadow-[0_10px_28px_-18px_rgba(0,120,212,.45)] flex items-center gap-3 px-4 sm:px-8 py-3">
       <button id="menuBtn" aria-label="Menu" class="lg:hidden h-10 w-10 shrink-0 rounded-lg border border-black bg-ms text-white shadow-[0_2px_0_0_#000] flex items-center justify-center">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
@@ -115,6 +121,14 @@ const sb = document.getElementById('sidebar'), ov = document.getElementById('ove
 function tog(o) { sb.classList.toggle('-translate-x-full', !o); ov.classList.toggle('hidden', !o); }
 document.getElementById('menuBtn').onclick = () => tog(true);
 ov.onclick = () => tog(false);
+document.querySelectorAll('[data-group]').forEach(g => {
+  const id = 'nav:' + g.dataset.group, btn = g.querySelector('.grp'), body = g.querySelector('.grp-body'), ico = g.querySelector('.grp-ico');
+  let open = g.dataset.active === '1';
+  try { const v = localStorage.getItem(id); if (v !== null && !open) open = v === '1'; } catch (e) {}
+  const apply = () => { body.classList.toggle('hidden', !open); ico.textContent = open ? '−' : '+'; btn.setAttribute('aria-expanded', open); };
+  btn.onclick = () => { open = !open; try { localStorage.setItem(id, open ? '1' : '0'); } catch (e) {} apply(); };
+  apply();
+});
 </script>
 </body>
 </html>
