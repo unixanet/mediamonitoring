@@ -1,0 +1,11 @@
+[Unit]
+Description=Media Monitoring full-text worker %i
+After=network-online.target mysql.service
+[Service]
+ExecStart=/usr/bin/php /var/www/beta_mediamo_usr/data/www/beta.mediamonitoring.am/crawler/fulltext.php %i
+Restart=always
+RestartSec=5
+Nice=10
+MemoryMax=512M
+[Install]
+WantedBy=multi-user.target

@@ -35,9 +35,9 @@ while ($r && ($x = $r->fetch_row())) { if ($x[0] === 'pending') $qp = (int)$x[1]
 $ftTotal = array_sum($ftc);
 $bad = $ftc['partial'] + $ftc['title_only'];
 $scfg = json_decode($s['extra'] ?? '', true) ?: [];
-$modes = ['text' => 'Text only', 'text_photo' => 'Photo + text'];
 $dedup = ['url' => 'By article URL', 'guid' => 'By feed GUID', 'title' => 'By title', 'title_date' => 'By title + publication day', 'content' => 'By article text'];
 if (!$s['is_active']) { $badge = ['Paused', 'bg-black text-white']; }
+elseif ($s['silent_since']) { $badge = ['Silent', 'bg-red-50 text-red-900 border-red-700']; }
 elseif ($s['consecutive_errors'] > 0) { $badge = ['Error', 'bg-red-50 text-red-900 border-red-700']; }
 else { $badge = ['Active', 'bg-ms text-white']; }
 
@@ -140,7 +140,8 @@ crawler_banner(); ?>
       <dl>
         <?php
         kv(t('Category'), $s['category'] ? e($s['category']) : '—');
-        kv(t('What to download'), e(t($modes[$s['download_mode']])));
+        kv(t('Time zone of dates'), e($s['feed_timezone']));
+        kv(t('Check interval'), e(((int)$s['check_interval_sec'] / 60) . ' ' . t('min')) . ($s['interval_mode'] === 'auto' ? ' · ' . e(t('auto')) . ($s['auto_interval_sec'] ? ' (' . round($s['auto_interval_sec'] / 60, 1) . ' ' . e(t('min')) . ')' : '') : ''));
         kv(t('Request headers'), e(t(($s['fetch_profile'] ?? 'browser') === 'browser' ? 'Browser-like' : 'Honest bot')));
         kv(t('Open article pages for full text'), e(t($s['fetch_full_text'] ? 'Yes' : 'No')));
         if ($s['type'] === 'sitemap') {
@@ -150,7 +151,7 @@ crawler_banner(); ?>
         }
         kv(t('Duplicate check'), e(t($dedup[$s['dedup_by']])));
         kv(t('Download articles published after'), $s['min_published_at'] ? e(fmt_dt($s['min_published_at'])) : e(t('Everything in the feed')));
-        kv(t('Check every'), e((string)($s['check_interval_sec'] / 60)) . ' ' . e(t('min')));
+        kv(t('Articles in 7 days'), number_format((int)$s['articles_7d']));
         kv(t('Added'), e(fmt_dt($s['created_at'])));
         ?>
       </dl>

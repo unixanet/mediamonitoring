@@ -149,10 +149,10 @@ function ft_collect(DOMXPath $x, DOMNode $node): string
     return implode("\n", $lines);
 }
 
-// Возвращает ['title','text','ts','image']
+// Возвращает ['title','text','ts']. $cfg: sel_title, sel_body, tz
 function ft_extract(string $html, array $cfg = []): array
 {
-    $out = ['title' => '', 'text' => '', 'ts' => null, 'image' => ''];
+    $out = ['title' => '', 'text' => '', 'ts' => null];
     $d = new DOMDocument();
     libxml_use_internal_errors(true);
     $d->loadHTML('<?xml encoding="UTF-8">' . $html, LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_PARSEHUGE);
@@ -179,16 +179,7 @@ function ft_extract(string $html, array $cfg = []): array
     // дата публикации
     $d0 = (string)($ld['datePublished'] ?? '') ?: ft_meta($x, ['article:published_time', 'og:published_time', 'datePublished', 'pubdate', 'date']);
     if ($d0 === '' && ($t = $x->query('//time/@datetime')) && $t->length) $d0 = $t->item(0)->nodeValue;
-    $ts = $d0 !== '' ? strtotime($d0) : false;
-    $out['ts'] = ($ts && $ts <= time() + 86400) ? $ts : null;
-
-    // фото
-    $img = ft_meta($x, ['og:image', 'twitter:image']);
-    if ($img === '' && isset($ld['image'])) {
-        $i = $ld['image'];
-        $img = is_array($i) ? (string)($i['url'] ?? ($i[0]['url'] ?? ($i[0] ?? ''))) : (string)$i;
-    }
-    $out['image'] = $img;
+    $out['ts'] = crawl_parse_date($d0, (string)($cfg['tz'] ?? 'UTC'));
 
     // текст
     foreach (iterator_to_array($x->query('//script|//style|//noscript|//iframe|//form|//nav|//aside|//footer|//svg|//button|//select|//figure|//template')) as $n) {
@@ -224,7 +215,7 @@ function ft_handle(mysqli $db, array $job, $ch, stdClass $st, int $errno, array 
         [$event, $reason] = $fail;
     } else {
         $html = ft_decode($st->body, (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE));
-        $ex = ft_extract($html, json_decode($src['extra'] ?? '', true) ?: []);
+        $ex = ft_extract($html, (json_decode($src['extra'] ?? '', true) ?: []) + ['tz' => $src['feed_timezone'] ?? 'UTC']);
         $len = mb_strlen($ex['text']);
         if ($len === 0) {
             $event = 'fulltext_failed';
@@ -237,8 +228,6 @@ function ft_handle(mysqli $db, array $job, $ch, stdClass $st, int $errno, array 
     if ($reason !== '') {
         $stats['last_error'] = $reason;
     }
-    $photo = $src['download_mode'] === 'text_photo';
-
     if ($kind === 'article') {
         $aid = (int)$job['id'];
         $att = (int)$job['fetch_attempts'] + 1;
@@ -246,12 +235,12 @@ function ft_handle(mysqli $db, array $job, $ch, stdClass $st, int $errno, array 
             // со страницы взяли больше, чем было в ленте, значит заменяем; иначе оставляем то, что отдала лента
             $text = mb_strlen($ex['text']) > mb_strlen(trim((string)$job['content'])) ? $ex['text'] : (string)$job['content'];
             $ch2 = md5($job['title'] . "\n" . $text);
-            $img = $photo && $ex['image'] !== '' ? mb_substr($ex['image'], 0, 2048) : null;
             $q = $db->prepare("UPDATE articles SET content=?, content_hash=UNHEX(?), content_status='full', fail_reason=NULL, next_retry_at=NULL,
-                fetch_attempts=?, image_url=COALESCE(image_url, ?) WHERE id=?");
-            $q->bind_param('ssisi', $text, $ch2, $att, $img, $aid);
+                fetch_attempts=? WHERE id=?");
+            $q->bind_param('ssii', $text, $ch2, $att, $aid);
             $q->execute();
             $q->close();
+            journal_touch($db, $aid);
             $db->query("UPDATE sources SET unfinished_count = GREATEST(unfinished_count - 1, 0) WHERE id = $sid");
             $stats['full']++;
             return;
@@ -263,6 +252,7 @@ function ft_handle(mysqli $db, array $job, $ch, stdClass $st, int $errno, array 
             $q->bind_param('sisi', $status, $att, $short, $aid);
             ft_log($db, $src, 'error', 'fulltext_gaveup', 'Gave up after ' . $att . ' attempts, saved as ' . str_replace('_', ' ', $status) . ': ' . $reason, $url, $http ?: null);
             $stats['partial']++;
+            $gaveUp = true;
         } else {
             $delay = ft_delay($att);
             $q = $db->prepare('UPDATE articles SET fetch_attempts=?, next_retry_at = NOW() + INTERVAL ? SECOND, fail_reason=? WHERE id=?');
@@ -274,6 +264,9 @@ function ft_handle(mysqli $db, array $job, $ch, stdClass $st, int $errno, array 
         }
         $q->execute();
         $q->close();
+        if (!empty($gaveUp)) {
+            journal_touch($db, $aid);     // итоговый статус известен, статья идёт в журнал (индекс)
+        }
         return;
     }
 
@@ -317,16 +310,19 @@ function ft_handle(mysqli $db, array $job, $ch, stdClass $st, int $errno, array 
     $u = mb_substr($url, 0, 2048);
     $title = mb_substr($ex['title'], 0, 1000);
     $content = mb_substr($ex['text'], 0, 500000);
-    $img = $photo && $ex['image'] !== '' ? mb_substr($ex['image'], 0, 2048) : null;
     $pub = gmdate('Y-m-d H:i:s', $ts);
-    $one = 1;
-    $q = $db->prepare('INSERT IGNORE INTO articles (source_id, dedup_hash, url, title, content, image_url, published_at, content_hash, content_status, fetch_attempts, next_retry_at, fail_reason)
-        VALUES (?, UNHEX(?), ?, ?, ?, ?, ?, UNHEX(?), ?, ?, ?, ?)');
+    $q = $db->prepare('INSERT IGNORE INTO articles (source_id, dedup_hash, url, title, content, published_at, content_hash, content_status, fetch_attempts, next_retry_at, fail_reason, journal_at)
+        VALUES (?, UNHEX(?), ?, ?, ?, ?, UNHEX(?), ?, ?, ?, ?, ?)');
     $att1 = $ok ? 0 : 1;
-    $q->bind_param('issssssssiss', $sid, $dh, $u, $title, $content, $img, $pub, $ch2, $status, $att1, $nr, $fr);
+    $jat = $ok ? gmdate('Y-m-d H:i:s') : null;
+    $q->bind_param('isssssssisss', $sid, $dh, $u, $title, $content, $pub, $ch2, $status, $att1, $nr, $fr, $jat);
     $q->execute();
     $inserted = $q->affected_rows === 1;
+    $newId = (int)$db->insert_id;
     $q->close();
+    if ($inserted && $ok) {
+        journal_add($db, [$newId]);
+    }
     $db->query("UPDATE url_queue SET status='" . ($inserted ? 'done' : 'skipped') . "', attempts=$att, last_error=NULL WHERE id=$qid");
     if ($inserted) {
         $unf = $ok ? 0 : 1;
@@ -340,19 +336,26 @@ function ft_handle(mysqli $db, array $job, $ch, stdClass $st, int $errno, array 
 }
 
 // Параллельная загрузка страниц. job: kind=article|queue, id, url, src, [content, title, fetch_attempts | attempts, lastmod]
+// Вежливость к сайтам: слот на хост (общий для всех процессов), не чаще 1 запроса в секунду.
 function ft_run_jobs(mysqli $db, array $jobs, int $par = 8, int $perHost = 2): array
 {
     $stats = ['full' => 0, 'failed' => 0, 'partial' => 0, 'inserted' => 0, 'last_error' => ''];
     if (!$jobs) {
         return $stats;
     }
+    $queue = [];
+    foreach ($jobs as $job) {
+        $job['_start'] = host_slot($db, 'page', (string)parse_url($job['url'], PHP_URL_HOST), 1000);
+        $queue[] = $job;
+    }
+    usort($queue, fn($a, $b) => $a['_start'] <=> $b['_start']);
     $mh = curl_multi_init();
     $active = [];
     $hostCnt = [];
-    $queue = $jobs;
     do {
         foreach ($queue as $k => $job) {
             if (count($active) >= $par) break;
+            if ($job['_start'] > microtime(true)) continue;
             $host = (string)parse_url($job['url'], PHP_URL_HOST);
             if (($hostCnt[$host] ?? 0) >= $perHost) continue;
             unset($queue[$k]);
@@ -380,7 +383,9 @@ function ft_run_jobs(mysqli $db, array $jobs, int $par = 8, int $perHost = 2): a
             }
         }
         if ($active) {
-            curl_multi_select($mh, 1.0);
+            curl_multi_select($mh, 0.2);
+        } elseif ($queue) {
+            usleep(100000);
         }
     } while ($active || $queue);
     curl_multi_close($mh);
@@ -398,33 +403,46 @@ function ft_sources_map(mysqli $db, array $ids): array
     return $map;
 }
 
-// Забрать задачи: $sourceId = только этот источник (ручной запуск, игнорируя расписание); иначе только «созревшие»
-function ft_collect_jobs(mysqli $db, int $limit, int $sourceId = 0): array
+// Забрать задачи атомарно (несколько воркеров не пересекаются): $sourceId = только этот источник (ручной запуск), иначе «созревшие»
+function ft_collect_jobs(mysqli $db, int $limit, int $sourceId = 0, int $perHostCap = 6): array
 {
-    $rows = [];
+    $tok = substr(bin2hex(random_bytes(6)), 0, 12);
     $wa = $sourceId ? "source_id = $sourceId" : 'next_retry_at <= NOW()';
-    $r = $db->query("SELECT id, source_id, url, title, content, fetch_attempts FROM articles
-        WHERE content_status = 'pending' AND $wa ORDER BY next_retry_at LIMIT $limit");
-    while ($r && ($x = $r->fetch_assoc())) $rows[] = ['kind' => 'article'] + $x;
     $wq = $sourceId ? "source_id = $sourceId" : 'next_try_at <= NOW()';
-    $r = $db->query("SELECT id, source_id, url, lastmod, attempts FROM url_queue
-        WHERE status = 'pending' AND $wq ORDER BY next_try_at LIMIT $limit");
+    $db->query("UPDATE articles SET claimed_by = '$tok', next_retry_at = NOW() + INTERVAL 120 SECOND
+        WHERE content_status = 'pending' AND $wa ORDER BY " . ($sourceId ? 'id' : 'next_retry_at') . " LIMIT $limit");
+    $db->query("UPDATE url_queue SET claimed_by = '$tok', next_try_at = NOW() + INTERVAL 120 SECOND
+        WHERE status = 'pending' AND $wq ORDER BY " . ($sourceId ? 'id' : 'next_try_at') . " LIMIT $limit");
+
+    $rows = [];
+    $r = $db->query("SELECT id, source_id, url, title, content, fetch_attempts FROM articles WHERE content_status = 'pending' AND claimed_by = '$tok'");
+    while ($r && ($x = $r->fetch_assoc())) $rows[] = ['kind' => 'article'] + $x;
+    $r = $db->query("SELECT id, source_id, url, lastmod, attempts FROM url_queue WHERE status = 'pending' AND claimed_by = '$tok'");
     while ($r && ($x = $r->fetch_assoc())) $rows[] = ['kind' => 'queue'] + $x;
 
     $map = ft_sources_map($db, array_column($rows, 'source_id'));
     $jobs = [];
+    $perHost = [];
+    $release = ['articles' => [], 'url_queue' => []];
     foreach ($rows as $row) {
         $src = $map[(int)$row['source_id']] ?? null;
-        if ($src && $src['is_active'] && $src['fetch_full_text']) {
+        $tbl = $row['kind'] === 'article' ? 'articles' : 'url_queue';
+        $host = (string)parse_url($row['url'], PHP_URL_HOST);
+        if (!$src || !$src['is_active']) {
+            $release[$tbl][(int)$row['id']] = '1 HOUR';          // источник остановлен: не крутим задачу каждую секунду
+        } elseif (!$src['fetch_full_text'] && $row['kind'] === 'article') {
+            $db->query("UPDATE articles SET content_status='full', next_retry_at=NULL WHERE id = " . (int)$row['id']);   // опцию выключили: остаётся текст ленты
+            $db->query('UPDATE sources SET unfinished_count = GREATEST(unfinished_count - 1, 0) WHERE id = ' . (int)$src['id']);
+            journal_touch($db, (int)$row['id']);
+        } elseif (($perHost[$host] = ($perHost[$host] ?? 0) + 1) > $perHostCap && !$sourceId) {
+            $release[$tbl][(int)$row['id']] = '0 SECOND';        // слишком много задач одного сайта за цикл: остальные в следующий раз
+        } else {
             $row['src'] = $src;
             $jobs[] = $row;
         }
     }
-    // занять, чтобы параллельный воркер не взял те же
-    foreach ($jobs as $j) {
-        if ($j['kind'] === 'article') $db->query('UPDATE articles SET next_retry_at = NOW() + INTERVAL 120 SECOND WHERE id = ' . (int)$j['id']);
-        else $db->query('UPDATE url_queue SET next_try_at = NOW() + INTERVAL 120 SECOND WHERE id = ' . (int)$j['id']);
-    }
+    foreach ($release['articles'] as $id => $d) $db->query("UPDATE articles SET claimed_by = NULL, next_retry_at = NOW() + INTERVAL $d WHERE id = $id");
+    foreach ($release['url_queue'] as $id => $d) $db->query("UPDATE url_queue SET claimed_by = NULL, next_try_at = NOW() + INTERVAL $d WHERE id = $id");
     return $jobs;
 }
 

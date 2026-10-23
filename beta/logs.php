@@ -5,7 +5,7 @@ $user = require_perm('logs.view');
 
 $levels = ['problems' => 'Problems (errors + warnings)', 'error' => 'Errors', 'warning' => 'Warnings', 'info' => 'New articles', 'all' => 'Everything'];
 $periods = [3600 => 'Last hour', 86400 => 'Last 24 hours', 604800 => 'Last 7 days', 2592000 => 'Last 30 days'];
-$events = ['http_error' => 'HTTP error', 'timeout' => 'Timeout', 'connection' => 'Connection', 'ssl' => 'SSL', 'parse_error' => 'Invalid feed', 'empty_feed' => 'Empty feed', 'cloudflare_block' => 'Cloudflare block', 'fulltext_failed' => 'Full text failed', 'fulltext_gaveup' => 'Full text given up', 'sitemap_queued' => 'Sitemap URLs found', 'fetched' => 'Fetched'];
+$events = ['http_error' => 'HTTP error', 'timeout' => 'Timeout', 'connection' => 'Connection', 'ssl' => 'SSL', 'parse_error' => 'Invalid feed', 'empty_feed' => 'Empty feed', 'cloudflare_block' => 'Cloudflare block', 'fulltext_failed' => 'Full text failed', 'fulltext_gaveup' => 'Full text given up', 'sitemap_queued' => 'Sitemap URLs found', 'silent_source' => 'Source went silent', 'source_recovered' => 'Source recovered', 'fetched' => 'Fetched'];
 
 $level = isset($levels[$_GET['level'] ?? '']) ? $_GET['level'] : 'problems';
 $period = isset($periods[(int)($_GET['period'] ?? 0)]) ? (int)$_GET['period'] : 86400;

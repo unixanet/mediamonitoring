@@ -1,6 +1,7 @@
 <?php
 // Ядро краулера. Используется демоном (crawler/run.php) и админкой (Fetch now / Start / добавление источника).
 require_once __DIR__ . '/fulltext.php';
+require_once __DIR__ . '/engine.php';
 
 const CRAWL_UA_BOT = 'Mozilla/5.0 (compatible; MediaMonitoringBot/1.0; +https://beta.mediamonitoring.am)';
 const CRAWL_UA_BROWSER = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
@@ -52,14 +53,43 @@ function crawl_norm_text(string $s): string
     return mb_strtolower(preg_replace('/[^\p{L}\p{N}]+/u', '', $s));
 }
 
-// Разбор RSS 2.0 / RSS 1.0 / Atom. Возвращает [items|null, error|null]
-function crawl_parse_feed(string $body): array
+// Дата → unix. Если в строке нет часового пояса, считаем её в поясе источника.
+function crawl_parse_date(string $d, string $tz = 'UTC'): ?int
+{
+    $d = trim($d);
+    if ($d === '') {
+        return null;
+    }
+    $hasZone = (bool)preg_match('/(Z|[+-]\d{2}:?\d{2}|\b(UTC|GMT|UT|[ECMP][SD]T)\b)\s*$/i', $d);
+    try {
+        $dt = $hasZone ? new DateTime($d) : new DateTime($d, new DateTimeZone($tz));
+    } catch (Exception $e) {
+        return null;
+    }
+    $ts = $dt->getTimestamp();
+    return $ts > time() + 900 ? time() : $ts;   // дата из будущего = ошибка пояса, берём «сейчас»
+}
+
+// Терпимый разбор XML: сначала строго, при ошибке убираем запрещённые символы и разбираем в режиме восстановления
+function crawl_load_xml(string $body)
 {
     $body = ltrim($body, "\xEF\xBB\xBF \t\r\n");
     $prev = libxml_use_internal_errors(true);
-    $xml = simplexml_load_string($body, 'SimpleXMLElement', LIBXML_NOCDATA | LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
+    $base = LIBXML_NOCDATA | LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_PARSEHUGE;
+    $xml = simplexml_load_string($body, 'SimpleXMLElement', $base);
+    if (!$xml) {
+        $clean = preg_replace('/[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}]+/u', '', $body);
+        $xml = simplexml_load_string($clean !== null ? $clean : $body, 'SimpleXMLElement', $base | LIBXML_RECOVER);
+    }
     libxml_clear_errors();
     libxml_use_internal_errors($prev);
+    return $xml ?: null;
+}
+
+// Разбор RSS 2.0 / RSS 1.0 / Atom. Возвращает [items|null, error|null]
+function crawl_parse_feed(string $body, string $tz = 'UTC'): array
+{
+    $xml = crawl_load_xml($body);
     if (!$xml || !in_array($xml->getName(), ['rss', 'feed', 'RDF'], true)) {
         return [null, 'Response is not a valid RSS/Atom feed'];
     }
@@ -80,10 +110,7 @@ function crawl_parse_feed(string $body): array
         $guid = trim((string)$it->guid) ?: trim((string)$it->id) ?: $link;
         $dc = $it->children('http://purl.org/dc/elements/1.1/');
         $d = (string)$it->pubDate ?: (string)$it->published ?: (string)$it->updated ?: (string)$dc->date;
-        $ts = $d !== '' ? strtotime($d) : false;
-        if (!$ts || $ts > time() + 86400) {
-            $ts = time();
-        }
+        $ts = crawl_parse_date($d, $tz) ?: time();
         $ce = $it->children('http://purl.org/rss/1.0/modules/content/');
         $html = (string)$ce->encoded;
         foreach (['description', 'content', 'summary'] as $k) {
@@ -91,36 +118,12 @@ function crawl_parse_feed(string $body): array
                 $html = (string)$it->$k;
             }
         }
-
-        $img = '';
-        if (isset($it->enclosure)) {
-            foreach ($it->enclosure as $en) {
-                $u = (string)$en['url'];
-                if ($u !== '' && (str_starts_with((string)$en['type'], 'image/') || preg_match('/\.(jpe?g|png|webp|gif)(\?|$)/i', $u))) {
-                    $img = $u;
-                    break;
-                }
-            }
-        }
-        if ($img === '') {
-            $media = $it->children('http://search.yahoo.com/mrss/');
-            foreach (['content', 'thumbnail'] as $k) {
-                if ($img === '' && isset($media->$k)) {
-                    $img = (string)$media->$k->attributes()->url;
-                }
-            }
-        }
-        if ($img === '' && preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $html, $m)) {
-            $img = html_entity_decode($m[1]);
-        }
-
         $items[] = [
             'title' => crawl_clean((string)$it->title),
             'url' => $link,
             'guid' => $guid,
             'ts' => $ts,
             'content' => crawl_clean($html),
-            'image' => $img,
             'raw' => (string)$it->asXML(),
         ];
     }
@@ -237,10 +240,16 @@ function crawl_failure(array $src, string $url, $ch, stdClass $st, int $errno): 
     return ['http_error', 'HTTP ' . $http . $hint, $details];
 }
 
+// Рабочий интервал: фиксированный или подобранный под частоту публикаций
+function crawl_interval(array $src): int
+{
+    return (int)((($src['interval_mode'] ?? 'fixed') === 'auto' && !empty($src['auto_interval_sec'])) ? $src['auto_interval_sec'] : $src['check_interval_sec']);
+}
+
 function crawl_fail(mysqli $db, array $src, array $res, string $event, string $msg, string $details): array
 {
     $errors = (int)$src['consecutive_errors'] + 1;
-    $interval = (int)$src['check_interval_sec'];
+    $interval = crawl_interval($src);
     $delay = min(1800, $interval * (2 ** min($errors, 5)));
     $q = $db->prepare('UPDATE sources SET last_checked_at=NOW(), last_http_code=?, last_response_ms=?, last_error=?,
         consecutive_errors=consecutive_errors+1, next_check_at = NOW() + INTERVAL ? SECOND WHERE id=?');
@@ -275,45 +284,85 @@ function crawl_process(mysqli $db, array $src, $ch, stdClass $st, int $errno): a
     $unfinished = 0;
     $warn = '';
     if (empty($res['not_modified'])) {
-        [$items, $perr] = crawl_parse_feed($st->body);
+        [$items, $perr] = crawl_parse_feed($st->body, $src['feed_timezone'] ?? 'UTC');
         if ($items === null) {
             $details .= "\n\nResponse start:\n" . mb_substr(crawl_clean($st->body), 0, 300);
             return crawl_fail($db, $src, $res, 'parse_error', $perr, $details);
         }
         $res['feed'] = count($items);
+        $res['edited'] = 0;
         $minTs = $src['min_published_at'] ? strtotime($src['min_published_at'] . ' UTC') : null;
-        $photo = $src['download_mode'] === 'text_photo';
+        $needFull = $src['fetch_full_text'];
 
-        $ins = $db->prepare('INSERT IGNORE INTO articles (source_id, dedup_hash, url, title, content, image_url, published_at, content_hash, content_status, next_retry_at)
-            VALUES (?, UNHEX(?), ?, ?, ?, ?, ?, UNHEX(?), ?, ?)');
-        $raw = $db->prepare('INSERT IGNORE INTO article_raw (article_id, raw) VALUES (?, ?)');
-        $db->begin_transaction();
+        // статьи ленты, которые у нас уже есть (один запрос на ленту): для обнаружения правок за последние 3 дня
+        $prepared = [];
         foreach ($items as $i) {
             $key = crawl_dedup_key($src['dedup_by'], $i);
             if ($key === '' || $i['title'] === '') {
                 continue;
             }
+            $i['dh'] = md5($key);
+            $prepared[] = $i;
+        }
+        $existing = [];
+        $recent = array_filter($prepared, fn($i) => $i['ts'] >= time() - 3 * 86400);
+        if ($recent) {
+            $in = implode(',', array_map(fn($i) => "UNHEX('" . $i['dh'] . "')", $recent));
+            $r = $db->query("SELECT id, HEX(dedup_hash) h, LOWER(HEX(content_hash)) ch, title FROM articles WHERE source_id = $sid AND dedup_hash IN ($in)");
+            while ($r && ($x = $r->fetch_assoc())) {
+                $existing[strtolower($x['h'])] = $x;
+            }
+        }
+
+        $ins = $db->prepare('INSERT IGNORE INTO articles (source_id, dedup_hash, url, title, content, published_at, content_hash, content_status, next_retry_at, journal_at)
+            VALUES (?, UNHEX(?), ?, ?, ?, ?, UNHEX(?), ?, ?, ?)');
+        $raw = $db->prepare('INSERT IGNORE INTO article_raw (article_id, raw) VALUES (?, ?)');
+        $journal = [];
+        $db->begin_transaction();
+        foreach ($prepared as $i) {
             if ($minTs !== null && $i['ts'] < $minTs) {
                 $res['old']++;
                 continue;
             }
-            $dh = md5($key);
+            $dh = $i['dh'];
             $ch2 = md5($i['title'] . "\n" . $i['content']);
             $url = mb_substr($i['url'], 0, 2048);
             $title = mb_substr($i['title'], 0, 1000);
             $content = mb_substr($i['content'], 0, 500000);
-            $image = $photo && $i['image'] !== '' ? mb_substr($i['image'], 0, 2048) : null;
             $pub = gmdate('Y-m-d H:i:s', $i['ts']);
+
+            if (isset($existing[$dh])) {      // уже есть: проверяем правку
+                $ex = $existing[$dh];
+                $changed = $needFull ? $ex['title'] !== $title : $ex['ch'] !== $ch2;   // при дозагрузке полного текста анонс ленты не сравниваем
+                if ($changed) {
+                    if ($needFull) {
+                        $uq = $db->prepare('UPDATE articles SET title=?, revision = revision + 1, updated_at = NOW() WHERE id=?');
+                        $uq->bind_param('si', $title, $ex['id']);
+                    } else {
+                        $uq = $db->prepare('UPDATE articles SET title=?, content=?, content_hash=UNHEX(?), revision = revision + 1, updated_at = NOW() WHERE id=?');
+                        $uq->bind_param('sssi', $title, $content, $ch2, $ex['id']);
+                    }
+                    $uq->execute();
+                    $uq->close();
+                    $journal[] = (int)$ex['id'];
+                    $res['edited']++;
+                }
+                $res['dup']++;
+                continue;
+            }
+
             // что отдала лента, то и сохраняем; страницу статьи открываем только если у источника включена эта опция
-            $needFull = $src['fetch_full_text'] && $url !== '';
-            $status = $needFull ? 'pending' : 'full';
-            $nr = $needFull ? gmdate('Y-m-d H:i:s') : null;
-            $ins->bind_param('isssssssss', $sid, $dh, $url, $title, $content, $image, $pub, $ch2, $status, $nr);
+            $nf = $needFull && $url !== '';
+            $status = $nf ? 'pending' : 'full';
+            $nr = $nf ? gmdate('Y-m-d H:i:s') : null;
+            $jat = $nf ? null : gmdate('Y-m-d H:i:s');
+            $ins->bind_param('isssssssss', $sid, $dh, $url, $title, $content, $pub, $ch2, $status, $nr, $jat);
             $ins->execute();
             if ($ins->affected_rows === 1) {
                 $new++;
-                $unfinished += $needFull ? 1 : 0;
+                $unfinished += $nf ? 1 : 0;
                 $aid = (int)$db->insert_id;
+                if (!$nf) $journal[] = $aid;
                 $gz = gzcompress($i['raw'], 6);
                 $raw->bind_param('is', $aid, $gz);
                 $raw->execute();
@@ -324,6 +373,9 @@ function crawl_process(mysqli $db, array $src, $ch, stdClass $st, int $errno): a
         $db->commit();
         $ins->close();
         $raw->close();
+        if ($journal) {
+            journal_add($db, $journal);
+        }
         if ($res['feed'] === 0) {
             $warn = 'The feed is valid but contains no items.';
         }
@@ -331,7 +383,7 @@ function crawl_process(mysqli $db, array $src, $ch, stdClass $st, int $errno): a
 
     $res['ok'] = true;
     $res['new'] = $new;
-    $interval = (int)$src['check_interval_sec'];
+    $interval = crawl_interval($src);
     $delay = $interval + random_int(0, max(1, (int)($interval * 0.1)));
     $etag = $st->etag;
     $lm = $st->lastmod;
@@ -365,7 +417,7 @@ function sm_parse(string $body): array
     if (strncmp($body, "\x1f\x8b", 2) === 0 && ($g = @gzdecode($body)) !== false) {
         $body = $g;
     }
-    $xml = @simplexml_load_string(ltrim($body, "\xEF\xBB\xBF \t\r\n"), 'SimpleXMLElement', LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_PARSEHUGE);
+    $xml = crawl_load_xml($body);
     if (!$xml) {
         return [null, 'Response is not a valid sitemap'];
     }
@@ -517,7 +569,7 @@ function crawl_sitemap_source(mysqli $db, array $src, bool $force): array
         return crawl_fail($db, $src, $res, $failure[0], $failure[1], $failure[2]);
     }
     $state['max_ts'] = max($ctx['max_ts'], $ctx['new_max']);
-    $interval = (int)$src['check_interval_sec'];
+    $interval = crawl_interval($src);
     $delay = $interval + random_int(0, max(1, (int)($interval * 0.1)));
     $json = json_encode($state);
     $q = $db->prepare('UPDATE sources SET last_checked_at=NOW(), last_success_at=NOW(), last_http_code=?, last_response_ms=?, last_error=NULL,
@@ -577,15 +629,21 @@ function crawl_flash(array $r, string $name): array
 }
 
 // Пачка источников параллельно через curl_multi (демон)
-function crawl_run_batch(mysqli $db, array $sources, int $par = 15): array
+function crawl_run_batch(mysqli $db, array $sources, int $par = 15, int $gapMs = 250): array
 {
     $stats = ['sources' => 0, 'new' => 0, 'errors' => 0];
     $mh = curl_multi_init();
     $active = [];
-    $queue = $sources;
+    $queue = [];
+    foreach ($sources as $src) {      // вежливость: не чаще одного запроса в $gapMs к одному хосту (общий слот для всех процессов)
+        $src['_start'] = host_slot($db, 'feed', (string)parse_url($src['feed_url'], PHP_URL_HOST), $gapMs);
+        $queue[] = $src;
+    }
+    usort($queue, fn($a, $b) => $a['_start'] <=> $b['_start']);
     do {
-        while ($queue && count($active) < $par) {
-            $src = array_shift($queue);
+        foreach ($queue as $k => $src) {
+            if (count($active) >= $par || $src['_start'] > microtime(true)) break;
+            unset($queue[$k]);
             $st = new stdClass();
             $st->body = '';
             $st->etag = $st->lastmod = null;
@@ -607,7 +665,9 @@ function crawl_run_batch(mysqli $db, array $sources, int $par = 15): array
             $stats['errors'] += $r['ok'] ? 0 : 1;
         }
         if ($active) {
-            curl_multi_select($mh, 1.0);
+            curl_multi_select($mh, 0.2);
+        } elseif ($queue) {
+            usleep(100000);
         }
     } while ($active || $queue);
     curl_multi_close($mh);

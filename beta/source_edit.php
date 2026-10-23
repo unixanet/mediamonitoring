@@ -7,9 +7,10 @@ $user = $id ? require_perm('sources.manage') : require_perm('source.add');
 $intervals = [60 => '1 minute', 120 => '2 minutes', 180 => '3 minutes', 300 => '5 minutes', 600 => '10 minutes', 900 => '15 minutes'];
 $dedupModes = ['url' => 'By article URL', 'guid' => 'By feed GUID', 'title' => 'By title', 'title_date' => 'By title + publication day', 'content' => 'By article text'];
 
-$s = ['name' => '', 'type' => 'rss', 'feed_url' => '', 'download_mode' => 'text', 'dedup_by' => 'url', 'category_id' => null,
+$s = ['name' => '', 'type' => 'rss', 'feed_url' => '', 'dedup_by' => 'url', 'category_id' => null,
       'start_mode' => 'all', 'start_date' => '', 'check_interval_sec' => 120, 'is_active' => 1,
-      'fetch_profile' => 'browser', 'fetch_full_text' => 0];
+      'fetch_profile' => 'browser', 'fetch_full_text' => 0, 'feed_timezone' => 'Asia/Yerevan', 'interval_mode' => 'fixed'];
+$timezones = ['Asia/Yerevan' => 'Yerevan (UTC+4)', 'UTC' => 'UTC', 'Europe/Moscow' => 'Moscow (UTC+3)', 'Asia/Tbilisi' => 'Tbilisi (UTC+4)', 'Europe/Istanbul' => 'Istanbul (UTC+3)', 'Europe/Kyiv' => 'Kyiv', 'Europe/London' => 'London', 'Europe/Paris' => 'Paris / Berlin', 'America/New_York' => 'New York'];
 $xs = ['urls_extra' => '', 'probe_next' => 0, 'map_include' => '', 'url_include' => '', 'url_exclude' => '', 'sel_title' => '', 'sel_body' => ''];
 
 if ($id) {
@@ -37,7 +38,7 @@ $errors = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $s['name'] = trim((string)($_POST['name'] ?? ''));
     $s['feed_url'] = trim((string)($_POST['feed_url'] ?? ''));
-    $s['type'] = in_array($_POST['type'] ?? '', ['rss', 'sitemap', 'html', 'social'], true) ? $_POST['type'] : 'rss';
+    $s['type'] = in_array($_POST['type'] ?? '', ['rss', 'sitemap'], true) ? $_POST['type'] : 'rss';
     $s['fetch_profile'] = ($_POST['fetch_profile'] ?? '') === 'bot' ? 'bot' : 'browser';
     $s['fetch_full_text'] = isset($_POST['fetch_full_text']) ? 1 : 0;
     $xs = ['urls_extra' => trim((string)($_POST['urls_extra'] ?? '')), 'probe_next' => isset($_POST['probe_next']) ? 1 : 0,
@@ -53,7 +54,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($xs[$sk] !== '' && ft_css_to_xpath($xs[$sk]) === null) $errors[] = 'Selector not supported (use tag, #id, .class and spaces): ' . $xs[$sk];
     }
     $extraJson = json_encode($extraArr, JSON_UNESCAPED_UNICODE);
-    $s['download_mode'] = ($_POST['download_mode'] ?? '') === 'text_photo' ? 'text_photo' : 'text';
+    $s['feed_timezone'] = isset($timezones[$_POST['feed_timezone'] ?? '']) ? $_POST['feed_timezone'] : 'Asia/Yerevan';
+    $s['interval_mode'] = isset($_POST['interval_auto']) ? 'auto' : 'fixed';
     $s['dedup_by'] = isset($dedupModes[$_POST['dedup_by'] ?? '']) ? $_POST['dedup_by'] : 'url';
     $s['check_interval_sec'] = isset($intervals[(int)($_POST['check_interval_sec'] ?? 0)]) ? (int)$_POST['check_interval_sec'] : 120;
     $s['is_active'] = isset($_POST['is_active']) ? 1 : 0;
@@ -92,15 +94,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $hash = md5($s['feed_url']);
         $cid = $s['category_id'];
         if ($id) {
-            $q = cdb()->prepare('UPDATE sources SET name=?, type=?, feed_url=?, feed_url_hash=?, download_mode=?, dedup_by=?,
-                min_published_at=?, check_interval_sec=?, is_active=?, category_id=?, fetch_profile=?, fetch_full_text=?, extra=? WHERE id=?');
-            $q->bind_param('sssssssiiisisi', $s['name'], $s['type'], $s['feed_url'], $hash, $s['download_mode'], $s['dedup_by'],
-                $minUtc, $s['check_interval_sec'], $s['is_active'], $cid, $s['fetch_profile'], $s['fetch_full_text'], $extraJson, $id);
+            $q = cdb()->prepare('UPDATE sources SET name=?, type=?, feed_url=?, feed_url_hash=?, dedup_by=?, min_published_at=?, check_interval_sec=?,
+                interval_mode=?, is_active=?, category_id=?, fetch_profile=?, fetch_full_text=?, feed_timezone=?, extra=? WHERE id=?');
+            $q->bind_param('ssssssisiisissi', $s['name'], $s['type'], $s['feed_url'], $hash, $s['dedup_by'], $minUtc, $s['check_interval_sec'],
+                $s['interval_mode'], $s['is_active'], $cid, $s['fetch_profile'], $s['fetch_full_text'], $s['feed_timezone'], $extraJson, $id);
         } else {
-            $q = cdb()->prepare('INSERT INTO sources (name, type, feed_url, feed_url_hash, download_mode, dedup_by,
-                min_published_at, check_interval_sec, is_active, category_id, fetch_profile, fetch_full_text, extra, next_check_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())');
-            $q->bind_param('sssssssiiisis', $s['name'], $s['type'], $s['feed_url'], $hash, $s['download_mode'], $s['dedup_by'],
-                $minUtc, $s['check_interval_sec'], $s['is_active'], $cid, $s['fetch_profile'], $s['fetch_full_text'], $extraJson);
+            $q = cdb()->prepare('INSERT INTO sources (name, type, feed_url, feed_url_hash, dedup_by, min_published_at, check_interval_sec,
+                interval_mode, is_active, category_id, fetch_profile, fetch_full_text, feed_timezone, extra, next_check_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())');
+            $q->bind_param('ssssssisiisiss', $s['name'], $s['type'], $s['feed_url'], $hash, $s['dedup_by'], $minUtc, $s['check_interval_sec'],
+                $s['interval_mode'], $s['is_active'], $cid, $s['fetch_profile'], $s['fetch_full_text'], $s['feed_timezone'], $extraJson);
         }
         if ($q->execute()) {
             $sid = $id ?: (int)cdb()->insert_id;
@@ -138,7 +140,7 @@ if ($errors): ?>
     <div>
       <label class="<?= ui('lbl') ?>" for="type"><?= e(t('Type')) ?></label>
       <select id="type" name="type" class="<?= ui('inp') ?>">
-        <?php foreach (['rss' => 'RSS', 'sitemap' => 'Sitemap', 'html' => 'HTML (not supported yet)', 'social' => 'Social (not supported yet)'] as $v => $l): ?>
+        <?php foreach (['rss' => 'RSS', 'sitemap' => 'Sitemap'] as $v => $l): ?>
           <option value="<?= $v ?>" <?= $s['type'] === $v ? 'selected' : '' ?>><?= $l ?></option>
         <?php endforeach; ?>
       </select>
@@ -208,19 +210,15 @@ if ($errors): ?>
       <div><label class="<?= ui('lbl') ?>"><?= e(t('Title selector')) ?></label><input name="sel_title" value="<?= e($xs['sel_title']) ?>" placeholder="h1.article-title" class="<?= ui('inp') ?>"></div>
       <div><label class="<?= ui('lbl') ?>"><?= e(t('Text selector')) ?></label><input name="sel_body" value="<?= e($xs['sel_body']) ?>" placeholder="div.article-body" class="<?= ui('inp') ?>"></div>
     </div>
-  </details>
-
-  <div>
-    <div class="<?= ui('lbl') ?>"><?= e(t('What to download')) ?></div>
-    <div class="grid gap-3 sm:grid-cols-2">
-      <?php foreach (['text' => 'Text only', 'text_photo' => 'Photo + text'] as $v => $l): ?>
-        <label class="flex items-center gap-3 rounded-lg border border-black px-4 py-2.5 text-sm font-semibold cursor-pointer has-[:checked]:bg-ms has-[:checked]:text-white">
-          <input type="radio" name="download_mode" value="<?= $v ?>" <?= $s['download_mode'] === $v ? 'checked' : '' ?> class="h-4 w-4 accent-black">
-          <?= e(t($l)) ?>
-        </label>
-      <?php endforeach; ?>
+    <div class="mt-4 border-t border-black/10 pt-4">
+      <label class="<?= ui('lbl') ?>" for="pv_url"><?= e(t('Test on an article page (optional)')) ?></label>
+      <div class="flex flex-col sm:flex-row gap-3">
+        <input id="pv_url" type="url" placeholder="https://site.am/news/123" class="<?= ui('inp') ?>">
+        <button type="button" id="pv_btn" class="<?= ui('btn2') ?> sm:w-56"><?= e(t('Preview extraction')) ?></button>
+      </div>
+      <div id="pv_out" class="mt-3 hidden rounded-lg border border-black bg-white p-3 text-sm"></div>
     </div>
-  </div>
+  </details>
 
   <div>
     <div class="<?= ui('lbl') ?>"><?= e(t('Which articles to download')) ?></div>
@@ -240,7 +238,7 @@ if ($errors): ?>
 
   <div class="grid gap-5 sm:grid-cols-2">
     <div>
-      <label class="<?= ui('lbl') ?>" for="check_interval_sec"><?= e(t('Check every')) ?></label>
+      <label class="<?= ui('lbl') ?>" for="check_interval_sec"><?= e(t('Check every')) ?><?= '' ?></label>
       <select id="check_interval_sec" name="check_interval_sec" class="<?= ui('inp') ?>">
         <?php foreach ($intervals as $v => $l): ?>
           <option value="<?= $v ?>" <?= (int)$s['check_interval_sec'] === $v ? 'selected' : '' ?>><?= e(t($l)) ?></option>
@@ -251,6 +249,20 @@ if ($errors): ?>
       <input type="checkbox" name="is_active" value="1" <?= $s['is_active'] ? 'checked' : '' ?> class="h-4 w-4 accent-black">
       <?= e(t('Active (crawl this source)')) ?>
     </label>
+  </div>
+
+  <div class="grid gap-5 sm:grid-cols-2">
+    <label class="flex items-start gap-3 rounded-lg border border-black px-4 py-2.5 text-sm font-semibold cursor-pointer">
+      <input type="checkbox" name="interval_auto" value="1" <?= $s['interval_mode'] === 'auto' ? 'checked' : '' ?> class="mt-0.5 h-4 w-4 accent-black">
+      <span><?= e(t('Adjust the interval to the publishing frequency')) ?><span class="block font-medium"><?= e(t('Never faster than the interval above, never slower than 15 minutes.')) ?></span></span>
+    </label>
+    <div>
+      <label class="<?= ui('lbl') ?>" for="feed_timezone"><?= e(t('Time zone of the feed dates')) ?></label>
+      <select id="feed_timezone" name="feed_timezone" class="<?= ui('inp') ?>">
+        <?php foreach ($timezones as $v => $l): ?><option value="<?= e($v) ?>" <?= $s['feed_timezone'] === $v ? 'selected' : '' ?>><?= e($l) ?></option><?php endforeach; ?>
+      </select>
+      <p class="mt-1.5 text-sm font-medium"><?= e(t('Used only when a date has no time zone in it.')) ?></p>
+    </div>
   </div>
 
   <div>
@@ -269,6 +281,18 @@ if ($errors): ?>
   </div>
 </form>
 <script>
+document.getElementById('pv_btn').onclick = async () => {
+  const out = document.getElementById('pv_out'), f = document.querySelector('form'), fd = new FormData();
+  ['csrf', 'sel_title', 'sel_body', 'fetch_profile', 'feed_timezone'].forEach(k => fd.append(k, f.elements[k].value));
+  fd.append('url', document.getElementById('pv_url').value);
+  out.classList.remove('hidden'); out.textContent = '…';
+  try {
+    const r = await (await fetch('/source_preview.php', { method: 'POST', body: fd })).json();
+    out.innerHTML = r.ok
+      ? '<div><b>' + r.title + '</b></div><div class="font-semibold">' + r.date + ' · ' + r.length + ' chars</div><div class="mt-2 whitespace-pre-line">' + r.text + '</div>'
+      : '<span class="font-semibold text-red-800">' + r.error + '</span>';
+  } catch (e) { out.textContent = 'Request failed'; }
+};
 const typeSel = document.getElementById('type');
 function syncType() {
   const sm = typeSel.value === 'sitemap';

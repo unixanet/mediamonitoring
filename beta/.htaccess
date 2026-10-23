@@ -2,4 +2,4 @@ Options -Indexes
 <FilesMatch "^(config\.php|DNA\.md)$">
   Require all denied
 </FilesMatch>
-RedirectMatch 403 ^/(lib|sql|lang|crawler)/
+RedirectMatch 403 ^/(lib|sql|lang|crawler|ops)/

@@ -29,6 +29,7 @@ function nav_tree(): array
             ['categories', '/categories.php', 'Categories', 'categories.view'],
             ['source_add', '/source_edit.php', 'Add source', 'source.add'],
         ]],
+        ['health', '/health.php', 'Engine', 'logs.view', 'M3 13h4l3-8 4 14 3-6h4'],
         ['logs', '/logs.php', 'Logs', 'logs.view', 'M9 8h6M9 12h6M9 16h4M5 4h14v16H5z'],
         ['search', '/search.php', 'Search', 'search', 'M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z'],
         ['users', '/users.php', 'Users', 'users.view', 'M17 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2M10 10a4 4 0 100-8 4 4 0 000 8zM21 20v-2a4 4 0 00-3-3.9'],

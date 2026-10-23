@@ -56,6 +56,7 @@ switch ($act) {
             }
             if ($ids) {
                 $in = implode(',', $ids);
+                journal_add(cdb(), $ids, 'delete');       // Manticore узнает об удалении
                 cdb()->query("DELETE FROM article_raw WHERE article_id IN ($in)");
                 cdb()->query("DELETE FROM articles WHERE id IN ($in)");
             }

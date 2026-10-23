@@ -1,5 +1,5 @@
 <?php
-// Демон краулера: php crawler/run.php (запускается через systemd, сервис mm-crawler)
+// Опрос лент и sitemap + обслуживание. Запуск: php crawler/run.php (systemd: mm-crawler)
 if (PHP_SAPI !== 'cli') {
     exit('CLI only');
 }
@@ -8,7 +8,6 @@ $cfg = require __DIR__ . '/../config.php';
 
 const MAX_PARALLEL = 15;   // одновременных соединений
 const BATCH = 60;          // источников за цикл
-const MAX_LOAD = 5.0;      // при loadavg выше пауза (сервер 6 vCore)
 const MAX_MEM = 256 * 1024 * 1024;
 
 function say(string $m): void
@@ -16,25 +15,23 @@ function say(string $m): void
     echo '[' . gmdate('Y-m-d H:i:s') . '] ' . $m . PHP_EOL;
 }
 
+$lock = engine_lock('poller');
 $db = crawler_connect($cfg['crawler_db']);
-$db->query('INSERT INTO crawler_status (id, heartbeat_at, started_at, pid) VALUES (1, NOW(), NOW(), ' . getmypid() . ')
-    ON DUPLICATE KEY UPDATE heartbeat_at = NOW(), started_at = NOW(), pid = ' . getmypid());
-say('crawler started, pid ' . getmypid());
-$lastPurge = 0;
-$lastBeat = 0;
+engine_register($db, 1, 'poller');
+say('poller started, pid ' . getmypid());
+$last = ['beat' => 0, 'stats' => 0, 'journal' => 0, 'purge' => 0];
 
 while (true) {
     try {
         if (!@$db->query('SELECT 1')) {
             $db = crawler_connect($cfg['crawler_db']);
         }
-        if (time() - $lastBeat >= 5) {
-            $db->query('UPDATE crawler_status SET heartbeat_at = NOW() WHERE id = 1');
-            $lastBeat = time();
+        if (time() - $last['beat'] >= 5) {
+            engine_heartbeat($db, 1, 'poller');
+            $last['beat'] = time();
         }
-        $load = sys_getloadavg();
-        if ($load && $load[0] > MAX_LOAD) {
-            say('high load ' . $load[0] . ', pausing');
+        if ($why = engine_overloaded($db)) {
+            say("paused: $why");
             sleep(5);
             continue;
         }
@@ -59,25 +56,24 @@ while (true) {
                 }
             }
             $ms = (int)((microtime(true) - $t) * 1000);
+            engine_heartbeat($db, 1, 'poller', $s['sources'], $ms);
+            $last['beat'] = time();
             say("cycle: {$s['sources']} sources, {$s['new']} new, {$s['errors']} errors, {$ms} ms");
-        }
-
-        // полный текст: статьи, ждущие страницу, и очередь sitemap
-        $jobs = ft_collect_jobs($db, 30);
-        if ($jobs) {
-            $t = microtime(true);
-            $f = ft_run_jobs($db, $jobs, 8, 2);
-            say("fulltext: {$f['full']} complete, {$f['failed']} failed, {$f['partial']} gave up, {$f['inserted']} from sitemap, " . (int)((microtime(true) - $t) * 1000) . ' ms');
-        }
-        $db->query('UPDATE crawler_status SET heartbeat_at = NOW() WHERE id = 1');
-        $lastBeat = time();
-        if (!$due && !$jobs) {
+        } else {
             sleep(1);
         }
 
-        if (time() - $lastPurge > 3600) {
-            crawl_purge_logs($db, 30);
-            $lastPurge = time();
+        if (time() - $last['journal'] >= 60) {
+            engine_journal_pending($db);
+            $last['journal'] = time();
+        }
+        if (time() - $last['stats'] >= 600) {
+            engine_source_stats($db);
+            $last['stats'] = time();
+        }
+        if (time() - $last['purge'] >= 3600) {
+            engine_purge($db);
+            $last['purge'] = time();
         }
         if (memory_get_usage(true) > MAX_MEM) {
             say('memory limit, exiting for restart');

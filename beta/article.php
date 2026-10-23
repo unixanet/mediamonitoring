@@ -31,6 +31,7 @@ $back = ($rp && ($rp['host'] ?? '') === explode(':', $_SERVER['HTTP_HOST'] ?? ''
     <span class="<?= ui('chip') ?>"><?= e(t('Published')) ?>: <?= e(fmt_dt($a['published_at'])) ?></span>
     <span class="<?= ui('chip') ?>"><?= e(t('Downloaded')) ?>: <?= e(fmt_dt($a['fetched_at'])) ?></span>
     <?= status_chip($a['content_status']) ?>
+    <?php if ((int)$a['revision'] > 0): ?><span class="<?= ui('chip') ?>"><?= e(t('Edited')) ?> ×<?= (int)$a['revision'] ?> · <?= e(fmt_dt($a['updated_at'])) ?></span><?php endif; ?>
   </div>
   <?php if ($a['content_status'] !== 'full'): ?>
     <div class="mt-4 rounded-xl border border-red-700 bg-red-50 px-4 py-3 text-sm font-semibold text-red-900">
@@ -43,7 +44,6 @@ $back = ($rp && ($rp['host'] ?? '') === explode(':', $_SERVER['HTTP_HOST'] ?? ''
       <?php endif; ?>
     </div>
   <?php endif; ?>
-  <?php if ($a['image_url']): ?><img src="<?= e($a['image_url']) ?>" alt="" class="mt-5 max-h-96 rounded-xl border border-black" loading="lazy" referrerpolicy="no-referrer"><?php endif; ?>
   <div class="mt-5 whitespace-pre-line leading-relaxed"><?= e($a['content']) ?></div>
   <a href="<?= e($a['url']) ?>" target="_blank" rel="noopener noreferrer" class="<?= ui('btn') ?> mt-6"><?= e(t('Open original')) ?> ↗</a>
 </article>

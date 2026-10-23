@@ -7,7 +7,7 @@ $st = sort_state(['name' => 's.name', 'category' => 'c.name', 'articles' => 's.a
     'last_check' => 's.last_checked_at', 'status' => 's.is_active'], 'name', 'asc');
 $rows = [];
 $r = cdb()->query('SELECT s.id, s.name, s.type, s.feed_url, s.is_active, s.articles_count, s.last_article_at, s.last_checked_at,
-    s.consecutive_errors, s.last_error, s.unfinished_count, c.name AS category FROM sources s LEFT JOIN categories c ON c.id = s.category_id
+    s.consecutive_errors, s.last_error, s.unfinished_count, s.silent_since, c.name AS category FROM sources s LEFT JOIN categories c ON c.id = s.category_id
     ORDER BY ' . $st['sql'] . ', s.id LIMIT 1000');
 while ($r && ($x = $r->fetch_assoc())) {
     $rows[] = $x;
@@ -16,6 +16,7 @@ while ($r && ($x = $r->fetch_assoc())) {
 function src_badge(array $s): array
 {
     if (!$s['is_active']) return ['Paused', 'bg-black text-white'];
+    if (!empty($s['silent_since'])) return ['Silent', 'bg-red-50 text-red-900 border-red-700'];
     if ($s['consecutive_errors'] > 0) return ['Error', 'bg-red-50 text-red-900 border-red-700'];
     return ['Active', 'bg-ms text-white'];
 }
