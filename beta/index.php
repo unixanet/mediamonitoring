@@ -2,23 +2,23 @@
 require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/layout.php';
 $user = require_login();
-page_head('Dashboard — Media Monitoring Admin');
-?>
-<body class="min-h-screen bg-indigo-50">
-  <header class="bg-indigo-950">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <div class="h-9 w-9 rounded-lg bg-indigo-500 text-white flex items-center justify-center font-bold">M</div>
-        <span class="hidden sm:inline text-white font-bold">Media Monitoring Admin</span>
-      </div>
-      <div class="flex items-center gap-3">
-        <span class="text-white text-sm sm:text-base">Welcome, <b class="text-indigo-200"><?= e($user['username']) ?></b></span>
-        <a href="/logout.php" class="rounded-lg bg-white text-indigo-950 text-sm font-semibold px-3 py-1.5 hover:bg-indigo-100 transition">Выйти</a>
-      </div>
+
+$total = $active = $articles = 0;
+$r = cdb()->query('SELECT COUNT(*), COALESCE(SUM(is_active),0), COALESCE(SUM(articles_count),0) FROM sources');
+if ($r) {
+    [$total, $active, $articles] = array_map('intval', $r->fetch_row());
+}
+
+app_start(t('Dashboard'), 'dashboard', $user); ?>
+<h1 class="text-3xl sm:text-4xl font-extrabold">Welcome, <span class="text-ms"><?= e($user['username']) ?></span></h1>
+<div class="mt-2 h-1.5 w-16 rounded-full bg-accent"></div>
+
+<div class="mt-8 grid gap-4 sm:grid-cols-3">
+  <?php foreach ([[t('Sources'), $total, 'bg-ms-light border-ms'], [t('Active'), $active, 'bg-ms-light border-ms'], [t('Articles collected'), $articles, 'bg-accent-light border-accent']] as [$l, $n, $c]): ?>
+    <div class="rounded-2xl border-2 <?= $c ?> p-5">
+      <div class="font-semibold text-black"><?= e($l) ?></div>
+      <div class="mt-1 text-4xl font-extrabold text-black"><?= number_format($n) ?></div>
     </div>
-  </header>
-  <main class="mx-auto max-w-7xl px-4 sm:px-6 py-8">
-    <h1 class="text-2xl sm:text-3xl font-bold text-indigo-950">Welcome, <?= e($user['username']) ?></h1>
-  </main>
-</body>
-</html>
+  <?php endforeach; ?>
+</div>
+<?php app_end();

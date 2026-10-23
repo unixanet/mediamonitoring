@@ -1,5 +1,7 @@
 <?php
 mysqli_report(MYSQLI_REPORT_OFF);
+date_default_timezone_set('UTC');
+const UI_TZ = 'Asia/Yerevan';
 $cfg = require __DIR__ . '/../config.php';
 
 session_set_cookie_params([
@@ -11,20 +13,95 @@ session_set_cookie_params([
 ]);
 session_start();
 
+function connect_db(array $c): mysqli
+{
+    $db = new mysqli($c['host'], $c['user'], $c['pass'], $c['name']);
+    if ($db->connect_errno) {
+        http_response_code(500);
+        exit('DB connection error');
+    }
+    $db->set_charset('utf8mb4');
+    $db->query("SET time_zone = '+00:00'");
+    return $db;
+}
+
+// БД админки
 function db(): mysqli
 {
     static $db = null;
     global $cfg;
-    if ($db === null) {
-        $c = $cfg['db'];
-        $db = new mysqli($c['host'], $c['user'], $c['pass'], $c['name']);
-        if ($db->connect_errno) {
-            http_response_code(500);
-            exit('DB connection error');
-        }
-        $db->set_charset('utf8mb4');
+    return $db ??= connect_db($cfg['db']);
+}
+
+// БД краулера (sources, articles)
+function cdb(): mysqli
+{
+    static $db = null;
+    global $cfg;
+    return $db ??= connect_db($cfg['crawler_db']);
+}
+
+// i18n: ключ = английская строка; переводы в lang/<код>.php (['English' => 'Перевод'])
+function t(string $s): string
+{
+    static $tr = null;
+    if ($tr === null) {
+        $f = __DIR__ . '/../lang/' . ($_SESSION['lang'] ?? 'en') . '.php';
+        $tr = is_file($f) ? require $f : [];
     }
-    return $db;
+    return $tr[$s] ?? $s;
+}
+
+function flash_set(string $type, string $msg): void
+{
+    $_SESSION['flash'] = [$type, $msg];
+}
+
+function flash_get(): ?array
+{
+    $f = $_SESSION['flash'] ?? null;
+    unset($_SESSION['flash']);
+    return $f;
+}
+
+function fmt_dt(?string $utc): string
+{
+    if (!$utc) {
+        return '—';
+    }
+    $d = new DateTime($utc, new DateTimeZone('UTC'));
+    $d->setTimezone(new DateTimeZone(UI_TZ));
+    return $d->format('d M Y, H:i');
+}
+
+function ago(?string $utc): string
+{
+    if (!$utc) {
+        return t('Never');
+    }
+    $s = max(0, time() - (new DateTime($utc, new DateTimeZone('UTC')))->getTimestamp());
+    if ($s < 60) return t('just now');
+    if ($s < 3600) return intdiv($s, 60) . ' ' . t('min ago');
+    if ($s < 86400) return intdiv($s, 3600) . ' ' . t('h ago');
+    return intdiv($s, 86400) . ' ' . t('d ago');
+}
+
+function ui_to_utc(string $v): ?string
+{
+    try {
+        $d = new DateTime($v, new DateTimeZone(UI_TZ));
+        $d->setTimezone(new DateTimeZone('UTC'));
+        return $d->format('Y-m-d H:i:s');
+    } catch (Exception $e) {
+        return null;
+    }
+}
+
+function utc_to_ui_input(string $utc): string
+{
+    $d = new DateTime($utc, new DateTimeZone('UTC'));
+    $d->setTimezone(new DateTimeZone(UI_TZ));
+    return $d->format('Y-m-d\TH:i');
 }
 
 function e(string $s): string

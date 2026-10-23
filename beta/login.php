@@ -14,9 +14,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = (string)($_POST['password'] ?? '');
 
     if (!csrf_ok()) {
-        $error = 'Сессия устарела, обновите страницу.';
+        $error = 'Session expired, please reload the page.';
     } elseif (too_many_attempts($ip)) {
-        $error = 'Слишком много попыток. Попробуйте позже.';
+        $error = 'Too many attempts. Try again later.';
     } else {
         $st = db()->prepare('SELECT id, username, password_hash, role FROM admin_users WHERE username=? AND is_active=1 LIMIT 1');
         $st->bind_param('s', $username);
@@ -33,43 +33,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         log_attempt($ip, $username, false);
-        $error = 'Неверный логин или пароль.';
+        $error = 'Wrong username or password.';
     }
 }
-page_head('Вход — Media Monitoring Admin');
+page_head('Sign in — Media Monitoring Admin');
 ?>
-<body class="min-h-screen bg-indigo-950 flex items-center justify-center p-4">
-  <main class="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 sm:p-10">
-    <div class="flex items-center gap-3 mb-8">
-      <div class="h-11 w-11 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xl font-bold">M</div>
-      <div>
-        <h1 class="text-xl font-bold text-indigo-950 leading-tight">Media Monitoring</h1>
-        <p class="text-sm font-medium text-indigo-700">Admin · beta</p>
-      </div>
+<body class="min-h-screen bg-white text-black">
+<div class="min-h-screen lg:grid lg:grid-cols-2">
+
+  <section class="bg-ms text-white px-6 py-10 sm:px-12 lg:py-0 lg:flex lg:flex-col lg:justify-center relative overflow-hidden">
+    <div class="absolute -right-16 -bottom-16 h-64 w-64 rounded-full bg-accent"></div>
+    <div class="relative flex items-center gap-3">
+      <div class="h-12 w-12 rounded-xl bg-white text-ms flex items-center justify-center text-2xl font-extrabold">M</div>
+      <span class="text-2xl font-extrabold">Media Monitoring</span>
     </div>
+    <h2 class="relative mt-8 lg:mt-14 text-3xl sm:text-4xl font-extrabold leading-tight max-w-md">Every Armenian news source. One place.</h2>
+    <p class="relative mt-4 text-lg font-medium text-white max-w-md">Manage sources, users and the crawler.</p>
+  </section>
 
-    <?php if ($error): ?>
-      <div class="mb-5 rounded-lg bg-red-50 border border-red-300 text-red-800 text-sm font-medium px-4 py-3"><?= e($error) ?></div>
-    <?php endif; ?>
+  <main class="flex items-center justify-center px-6 py-10 sm:px-12">
+    <div class="w-full max-w-md">
+      <h1 class="text-3xl font-extrabold text-black"><?= e(t('Sign in')) ?></h1>
+      <div class="mt-2 h-1.5 w-16 rounded-full bg-accent"></div>
 
-    <form method="post" class="space-y-5" autocomplete="on">
-      <input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
-      <div>
-        <label for="username" class="block text-sm font-semibold text-indigo-950 mb-1.5">Логин</label>
-        <input id="username" name="username" type="text" required autofocus autocomplete="username"
-               value="<?= e((string)($_POST['username'] ?? '')) ?>"
-               class="w-full rounded-lg border-2 border-indigo-200 px-4 py-3 text-indigo-950 focus:border-indigo-600 focus:outline-none focus:ring-4 focus:ring-indigo-200">
-      </div>
-      <div>
-        <label for="password" class="block text-sm font-semibold text-indigo-950 mb-1.5">Пароль</label>
-        <input id="password" name="password" type="password" required autocomplete="current-password"
-               class="w-full rounded-lg border-2 border-indigo-200 px-4 py-3 text-indigo-950 focus:border-indigo-600 focus:outline-none focus:ring-4 focus:ring-indigo-200">
-      </div>
-      <button type="submit"
-              class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold py-3 transition focus:outline-none focus:ring-4 focus:ring-indigo-300">
-        Войти
-      </button>
-    </form>
+      <?php if ($error): ?>
+        <div class="mt-6 rounded-xl border-2 border-red-600 bg-red-50 text-red-900 font-semibold px-4 py-3"><?= e(t($error)) ?></div>
+      <?php endif; ?>
+
+      <form method="post" class="mt-8 space-y-5" autocomplete="on">
+        <input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
+        <div>
+          <label for="username" class="block font-bold text-black mb-1.5"><?= e(t('Username')) ?></label>
+          <input id="username" name="username" type="text" required autofocus autocomplete="username"
+                 value="<?= e((string)($_POST['username'] ?? '')) ?>"
+                 class="w-full rounded-xl border-2 border-ms px-4 py-3 text-black bg-white focus:outline-none focus:ring-4 focus:ring-ms-mid">
+        </div>
+        <div>
+          <label for="password" class="block font-bold text-black mb-1.5"><?= e(t('Password')) ?></label>
+          <input id="password" name="password" type="password" required autocomplete="current-password"
+                 class="w-full rounded-xl border-2 border-ms px-4 py-3 text-black bg-white focus:outline-none focus:ring-4 focus:ring-ms-mid">
+        </div>
+        <button type="submit" class="w-full rounded-xl bg-accent hover:bg-accent-dark text-white text-lg font-bold py-3.5 transition focus:outline-none focus:ring-4 focus:ring-orange-300">
+          <?= e(t('Sign in')) ?>
+        </button>
+      </form>
+    </div>
   </main>
+</div>
 </body>
 </html>

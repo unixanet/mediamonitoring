@@ -10,7 +10,17 @@
 - Функции (по мере добавления): пользователи (добавить/удалить), источники (список, добавить, удалить), нагрузка БД и краулера.
 - Стек: чистый PHP 8.1+ (без фреймворка) + MySQL + Tailwind (CDN). Код в `beta/`, document root = `beta/`.
 - Вход: `/login.php` (CSRF, bcrypt, лимит 5 неудачных попыток с IP за 15 мин). Стартовый пользователь: `admin` / `Beta#2026Admin` (роль owner).
-- Дизайн: Tailwind, mobile-first. Серый на белом не использовать; палитра indigo. Современный интерфейс.
+- Дизайн: Tailwind, mobile-first. Палитра: белый, чёрный, Microsoft-голубой `#0078D4`, оранжевый `#E05A00`. Тёмно-синий и серый на белом не использовать.
+- Язык интерфейса: английский. i18n: `t('English text')`, переводы в `lang/<код>.php` (`ru`, `hy` добавим позже).
+- Меню: Dashboard, Sources. Новые модули добавлять в `nav_items()` (`lib/layout.php`).
+- Две БД-подключения: `db()` (админка) и `cdb()` (краулер). Время в БД везде UTC, в интерфейсе Asia/Yerevan.
+
+## Модуль Sources (источники)
+- Список: имя, тип, URL, статус, число статей, когда последняя статья, когда последняя проверка. Действия: Add, Edit, Pause/Resume. Удаление пока не делаем.
+- Поля источника: имя, тип (rss/html/social), URL, что качать (text / text_photo), `dedup_by` (url/guid), `min_published_at` (не качать старше), интервал опроса (1/2/3/5/10/15 мин, по умолчанию 2), active.
+- Дедуп: всегда включён, `UNIQUE (source_id, dedup_hash)`. Одна статья у разных источников допустима.
+- `sources.extra` (JSON) зарезервирован под будущие доп. поля, настраиваемые из интерфейса.
+- Счётчики `articles_count`, `last_article_at` денормализованы в `sources`, их обновляет краулер (список читается без COUNT по `articles`).
 
 ## Сервер
 Ubuntu 22.04, 6 vCore, 12 GB RAM, 100 GB. Система не должна ронять сервер (лимиты параллелизма, backoff, пауза при нагрузке).
@@ -22,6 +32,18 @@ Ubuntu 22.04, 6 vCore, 12 GB RAM, 100 GB. Система не должна ро�
 | Краулер (RSS, статьи) | `crawler` | `crawler` | `u]~6.!KW23gG1`4-` |
 
 Кодировка везде utf8mb4.
+
+## БД краулера: `crawler` (миграция 003)
+- `sources`, `articles` (статьи текущего года), `article_raw` (сырой RSS gzip). Без FULLTEXT; поиск делает Manticore.
+- Объём: до 700 000 статей в год. Индексы: `(source_id, dedup_hash)` unique, `(source_id, published_at)`, `(published_at)`.
+- ID статей сквозные и не повторяются между годами (при архивации выставляем AUTO_INCREMENT новой таблицы).
+
+## Годовая архивация
+В конце года на одном сервере MySQL, атомарно:
+1. `RENAME TABLE crawler.articles TO crawler_archive.articles_ГГГГ, crawler.article_raw TO crawler_archive.article_raw_ГГГГ;`
+2. `CREATE TABLE crawler.articles LIKE crawler_archive.articles_ГГГГ;` и то же для `article_raw`.
+3. `ALTER TABLE crawler.articles AUTO_INCREMENT = <последний id + 1>;`
+Архивную БД `crawler_archive` можно потом дампом вынести на другой сервер. Счётчики в `sources` не обнуляются. Скрипт архивации напишем отдельно.
 
 ## Краулер (план)
 - До 150 RSS-источников, обновление каждые 1–3 минуты максимум; интервал настраивается (опционально, по источнику).
@@ -45,4 +67,5 @@ Ubuntu 22.04, 6 vCore, 12 GB RAM, 100 GB. Система не должна ро�
 
 ## Журнал
 - 2026-10-23: каркас админки (логин, welcome), миграция `001_admin_init.sql`.
+- 2026-10-23: новый дизайн (белый/голубой/оранжевый), английский UI, меню, модуль Sources, миграции 002 (root: БД и пользователь crawler, БД crawler_archive) и 003 (sources, articles, article_raw).
 - 2026-10-23: всё перенесено в main, папка beta/.
