@@ -11,7 +11,8 @@ if ($r) {
 $r = cdb()->query('SELECT COUNT(*) FROM categories');
 $cats = $r ? (int)$r->fetch_row()[0] : 0;
 
-app_start(t('Dashboard'), 'dashboard', $user); ?>
+app_start(t('Dashboard'), 'dashboard', $user);
+if (can('logs.view')) crawler_banner(); ?>
 <h1 class="<?= ui('h1') ?>">Welcome, <span class="text-ms"><?= e($user['username']) ?></span></h1>
 
 <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

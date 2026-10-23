@@ -171,3 +171,35 @@ function validate_password(string $p): ?string
 {
     return mb_strlen($p) < 8 ? 'Password must be at least 8 characters.' : null;
 }
+
+function until(?string $utc): string
+{
+    if (!$utc) return '—';
+    $s = (new DateTime($utc, new DateTimeZone('UTC')))->getTimestamp() - time();
+    if ($s <= 0) return t('due now');
+    if ($s < 60) return t('in') . ' ' . $s . ' ' . t('sec');
+    if ($s < 3600) return t('in') . ' ' . intdiv($s, 60) . ' ' . t('min') . ' ' . ($s % 60) . ' ' . t('sec');
+    return t('in') . ' ' . intdiv($s, 3600) . ' ' . t('h') . ' ' . intdiv($s % 3600, 60) . ' ' . t('min');
+}
+
+// Кнопки действий источника; $back = 'list' | 'detail'
+function src_actions(array $s, string $back = 'list'): void
+{
+    $id = (int)$s['id'];
+    $f = fn(string $act, string $cls, string $label, string $confirm = '') =>
+        '<form method="post" action="/source_action.php"' . ($confirm ? ' onsubmit="return confirm(\'' . e($confirm) . '\')"' : '') . '>'
+        . '<input type="hidden" name="csrf" value="' . e(csrf()) . '"><input type="hidden" name="id" value="' . $id . '"><input type="hidden" name="back" value="' . $back . '">'
+        . '<button name="act" value="' . $act . '" class="' . ui($cls) . ' !px-3 !py-1.5">' . e($label) . '</button></form>';
+    echo '<div class="flex flex-wrap gap-2">';
+    echo $s['is_active'] ? $f('fetch', 'btn', '▶ ' . t('Fetch now')) : $f('start', 'btn', '▶ ' . t('Start'));
+    if ($s['is_active']) echo $f('pause', 'btn2', '❚❚ ' . t('Pause'));
+    echo '<a class="' . ui('btn2') . ' !px-3 !py-1.5" href="/source_edit.php?id=' . $id . '">' . e(t('Edit')) . '</a>';
+    echo $f('delete', 'btnd', t('Delete'), t('Delete this source and ALL its articles? This cannot be undone.'));
+    echo '</div>';
+}
+
+function source_article_row(array $a): string
+{
+    return '<li class="px-4 py-3 hover:bg-ms-light/60"><a class="' . ui('link') . '" href="/article.php?id=' . (int)$a['id'] . '">' . e($a['title']) . '</a>'
+        . '<div class="mt-0.5 text-xs font-semibold">' . e(fmt_dt($a['published_at'])) . '</div></li>';
+}

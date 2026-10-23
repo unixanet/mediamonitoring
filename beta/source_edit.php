@@ -5,10 +5,10 @@ require __DIR__ . '/lib/layout.php';
 $id = (int)($_GET['id'] ?? 0);
 $user = $id ? require_perm('sources.manage') : require_perm('source.add');
 $intervals = [60 => '1 minute', 120 => '2 minutes', 180 => '3 minutes', 300 => '5 minutes', 600 => '10 minutes', 900 => '15 minutes'];
-
 $dedupModes = ['url' => 'By article URL', 'guid' => 'By feed GUID', 'title' => 'By title', 'title_date' => 'By title + publication day', 'content' => 'By article text'];
+
 $s = ['name' => '', 'type' => 'rss', 'feed_url' => '', 'download_mode' => 'text', 'dedup_by' => 'url', 'category_id' => null,
-      'min_input' => utc_to_ui_input(gmdate('Y-m-d H:i:s')), 'check_interval_sec' => 120, 'is_active' => 1];
+      'start_mode' => 'all', 'start_date' => '', 'check_interval_sec' => 120, 'is_active' => 1];
 
 if ($id) {
     $r = cdb()->query("SELECT * FROM sources WHERE id = $id LIMIT 1");
@@ -18,7 +18,9 @@ if ($id) {
         header('Location: /sources.php');
         exit;
     }
-    $s = array_merge($s, $row, ['min_input' => utc_to_ui_input($row['min_published_at'])]);
+    $s = array_merge($s, $row);
+    $s['start_mode'] = $row['min_published_at'] ? 'date' : 'all';
+    $s['start_date'] = $row['min_published_at'] ? substr(utc_to_ui_input($row['min_published_at']), 0, 10) : '';
 }
 
 $cats = [];
@@ -36,18 +38,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $s['dedup_by'] = isset($dedupModes[$_POST['dedup_by'] ?? '']) ? $_POST['dedup_by'] : 'url';
     $s['check_interval_sec'] = isset($intervals[(int)($_POST['check_interval_sec'] ?? 0)]) ? (int)$_POST['check_interval_sec'] : 120;
     $s['is_active'] = isset($_POST['is_active']) ? 1 : 0;
-    $s['min_input'] = (string)($_POST['min_published_at'] ?? '');
-    $minUtc = ui_to_utc($s['min_input']);
+    $s['start_mode'] = in_array($_POST['start_mode'] ?? '', ['all', 'new', 'date'], true) ? $_POST['start_mode'] : 'all';
+    $s['start_date'] = trim((string)($_POST['start_date'] ?? ''));
     $catId = (int)($_POST['category_id'] ?? 0);
     $s['category_id'] = isset($cats[$catId]) ? $catId : null;
     $newCat = trim((string)($_POST['new_category'] ?? ''));
+
+    $minUtc = null;   // NULL = всё, что есть в потоке
+    if ($s['start_mode'] === 'new') {
+        $minUtc = gmdate('Y-m-d H:i:s');
+    } elseif ($s['start_mode'] === 'date') {
+        $d = DateTime::createFromFormat('Y-m-d', $s['start_date']);
+        if (!$d || $d->format('Y-m-d') !== $s['start_date']) {
+            $errors[] = 'Pick a start date.';
+        } else {
+            $minUtc = ui_to_utc($s['start_date'] . ' 00:00');
+        }
+    }
 
     if (!csrf_ok()) $errors[] = 'Session expired, please reload the page.';
     if ($s['name'] === '' || mb_strlen($s['name']) > 190) $errors[] = 'Source name is required (up to 190 characters).';
     if (!filter_var($s['feed_url'], FILTER_VALIDATE_URL) || !preg_match('#^https?://#i', $s['feed_url']) || strlen($s['feed_url']) > 1024) {
         $errors[] = 'Feed URL must be a valid http(s) link.';
     }
-    if (!$minUtc) $errors[] = 'Start date is invalid.';
     if ($newCat !== '' && mb_strlen($newCat) > 120) $errors[] = 'Category name is too long.';
 
     if (!$errors) {
@@ -71,8 +84,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $minUtc, $s['check_interval_sec'], $s['is_active'], $cid);
         }
         if ($q->execute()) {
-            flash_set('ok', $id ? 'Source saved.' : 'Source added.');
-            header('Location: ' . (can('sources.view') ? '/sources.php' : '/'));
+            $sid = $id ?: (int)cdb()->insert_id;
+            if (!$id && $s['is_active']) {      // первый забег сразу после добавления
+                $r = cdb()->query("SELECT * FROM sources WHERE id = $sid");
+                [$ft, $fm] = crawl_flash(crawl_source_sync(cdb(), $r->fetch_assoc()), $s['name']);
+                flash_set($ft, 'Source added. ' . $fm);
+            } else {
+                flash_set('ok', $id ? 'Source saved.' : 'Source added.');
+            }
+            header('Location: ' . (can('sources.view') ? '/source.php?id=' . $sid : '/'));
             exit;
         }
         $errors[] = $q->errno === 1062 ? 'A source with this name or feed URL already exists.' : 'Database error, please try again.';
@@ -99,7 +119,7 @@ if ($errors): ?>
     <div>
       <label class="<?= ui('lbl') ?>" for="type"><?= e(t('Type')) ?></label>
       <select id="type" name="type" class="<?= ui('inp') ?>">
-        <?php foreach (['rss' => 'RSS', 'html' => 'HTML', 'social' => 'Social'] as $v => $l): ?>
+        <?php foreach (['rss' => 'RSS', 'html' => 'HTML (not supported yet)', 'social' => 'Social (not supported yet)'] as $v => $l): ?>
           <option value="<?= $v ?>" <?= $s['type'] === $v ? 'selected' : '' ?>><?= $l ?></option>
         <?php endforeach; ?>
       </select>
@@ -141,12 +161,23 @@ if ($errors): ?>
     </div>
   </div>
 
-  <div class="grid gap-5 sm:grid-cols-2">
-    <div>
-      <label class="<?= ui('lbl') ?>" for="min_published_at"><?= e(t('Download articles published after')) ?></label>
-      <input id="min_published_at" name="min_published_at" type="datetime-local" required value="<?= e($s['min_input']) ?>" class="<?= ui('inp') ?>">
-      <p class="mt-1.5 text-sm font-medium"><?= e(t('Older articles are skipped. Time zone: Yerevan (UTC+4).')) ?></p>
+  <div>
+    <div class="<?= ui('lbl') ?>"><?= e(t('Which articles to download')) ?></div>
+    <div class="grid gap-3 sm:grid-cols-3">
+      <?php foreach (['all' => 'Everything in the feed', 'new' => 'Only new, from now', 'date' => 'Published from a date'] as $v => $l): ?>
+        <label class="flex items-center gap-3 rounded-lg border border-black px-4 py-2.5 text-sm font-semibold cursor-pointer has-[:checked]:bg-ms has-[:checked]:text-white">
+          <input type="radio" name="start_mode" value="<?= $v ?>" <?= $s['start_mode'] === $v ? 'checked' : '' ?> class="h-4 w-4 accent-black">
+          <?= e(t($l)) ?>
+        </label>
+      <?php endforeach; ?>
     </div>
+    <div id="dateWrap" class="mt-3 max-w-xs <?= $s['start_mode'] === 'date' ? '' : 'hidden' ?>">
+      <input name="start_date" type="date" value="<?= e($s['start_date']) ?>" class="<?= ui('inp') ?>">
+    </div>
+    <p class="mt-1.5 text-sm font-medium"><?= e(t('An RSS feed only contains the latest items (usually 10–100). Older articles are not available through RSS.')) ?></p>
+  </div>
+
+  <div class="grid gap-5 sm:grid-cols-2">
     <div>
       <label class="<?= ui('lbl') ?>" for="check_interval_sec"><?= e(t('Check every')) ?></label>
       <select id="check_interval_sec" name="check_interval_sec" class="<?= ui('inp') ?>">
@@ -155,27 +186,29 @@ if ($errors): ?>
         <?php endforeach; ?>
       </select>
     </div>
-  </div>
-
-  <div class="grid gap-5 sm:grid-cols-2">
-    <div>
-      <label class="<?= ui('lbl') ?>" for="dedup_by"><?= e(t('Duplicate check (within this source)')) ?></label>
-      <select id="dedup_by" name="dedup_by" class="<?= ui('inp') ?>">
-        <?php foreach ($dedupModes as $v => $l): ?>
-          <option value="<?= $v ?>" <?= $s['dedup_by'] === $v ? 'selected' : '' ?>><?= e(t($l)) ?></option>
-        <?php endforeach; ?>
-      </select>
-      <p class="mt-1.5 text-sm font-medium"><?= e(t('Always on: this source never stores the same article twice. Other sources may. Changing the method applies to new articles only.')) ?></p>
-    </div>
     <label class="flex items-center gap-3 self-start sm:mt-7 rounded-lg border border-black px-4 py-2.5 text-sm font-semibold cursor-pointer">
       <input type="checkbox" name="is_active" value="1" <?= $s['is_active'] ? 'checked' : '' ?> class="h-4 w-4 accent-black">
       <?= e(t('Active (crawl this source)')) ?>
     </label>
   </div>
 
-  <div class="flex flex-col-reverse sm:flex-row gap-3 pt-2 border-t border-black/10 pt-6">
+  <div>
+    <label class="<?= ui('lbl') ?>" for="dedup_by"><?= e(t('Duplicate check (within this source)')) ?></label>
+    <select id="dedup_by" name="dedup_by" class="<?= ui('inp') ?> sm:max-w-sm">
+      <?php foreach ($dedupModes as $v => $l): ?>
+        <option value="<?= $v ?>" <?= $s['dedup_by'] === $v ? 'selected' : '' ?>><?= e(t($l)) ?></option>
+      <?php endforeach; ?>
+    </select>
+    <p class="mt-1.5 text-sm font-medium"><?= e(t('Always on: this source never stores the same article twice. Other sources may. Changing the method applies to new articles only.')) ?></p>
+  </div>
+
+  <div class="flex flex-col-reverse sm:flex-row gap-3 border-t border-black/10 pt-6">
     <a href="<?= can('sources.view') ? '/sources.php' : '/' ?>" class="<?= ui('btn2') ?>"><?= e(t('Cancel')) ?></a>
-    <button class="<?= ui('btn') ?> sm:px-8"><?= e(t('Save')) ?></button>
+    <button class="<?= ui('btn') ?> sm:px-8"><?= e(t($id ? 'Save' : 'Save and fetch now')) ?></button>
   </div>
 </form>
+<script>
+document.querySelectorAll('input[name=start_mode]').forEach(r => r.onchange = () =>
+  document.getElementById('dateWrap').classList.toggle('hidden', document.querySelector('input[name=start_mode]:checked').value !== 'date'));
+</script>
 <?php app_end();

@@ -29,6 +29,7 @@ function nav_tree(): array
             ['categories', '/categories.php', 'Categories', 'categories.view'],
             ['source_add', '/source_edit.php', 'Add source', 'source.add'],
         ]],
+        ['logs', '/logs.php', 'Logs', 'logs.view', 'M9 8h6M9 12h6M9 16h4M5 4h14v16H5z'],
         ['search', '/search.php', 'Search', 'search', 'M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z'],
         ['users', '/users.php', 'Users', 'users.view', 'M17 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2M10 10a4 4 0 100-8 4 4 0 000 8zM21 20v-2a4 4 0 00-3-3.9'],
     ];
@@ -146,4 +147,16 @@ function forbidden(array $user): void
     echo '<div class="' . ui('card') . ' p-8 text-center font-semibold">' . e(t('You do not have permission to open this page.')) . '</div>';
     app_end();
     exit;
+}
+
+function crawler_banner(): void
+{
+    $c = crawler_status(cdb());
+    if ($c['online']) {
+        echo '<div class="mb-5 inline-flex items-center gap-2 rounded-full border border-black bg-white px-3 py-1 text-sm font-semibold"><span class="h-2.5 w-2.5 rounded-full bg-ms"></span>'
+            . e(t('Crawler running')) . ' · ' . e(t('up since')) . ' ' . e(fmt_dt($c['started_at'])) . '</div>';
+    } else {
+        echo '<div class="mb-5 rounded-xl border border-red-700 bg-red-50 text-red-900 px-4 py-3 text-sm font-semibold">'
+            . e(t('Crawler is offline. Scheduled fetching is stopped. “Fetch now” still works. Start it on the server: systemctl start mm-crawler')) . '</div>';
+    }
 }

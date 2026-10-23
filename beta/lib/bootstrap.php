@@ -170,3 +170,4 @@ function log_attempt(string $ip, string $username, bool $ok): void
 }
 
 require __DIR__ . '/helpers.php';
+require __DIR__ . '/crawler.php';
