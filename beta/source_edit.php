@@ -11,7 +11,7 @@ $s = ['name' => '', 'type' => 'rss', 'feed_url' => '', 'dedup_by' => 'url', 'cat
       'start_mode' => 'all', 'start_date' => '', 'check_interval_sec' => 120, 'is_active' => 1,
       'fetch_profile' => 'browser', 'fetch_full_text' => 0, 'feed_timezone' => 'Asia/Yerevan', 'interval_mode' => 'fixed'];
 $timezones = ['Asia/Yerevan' => 'Yerevan (UTC+4)', 'UTC' => 'UTC', 'Europe/Moscow' => 'Moscow (UTC+3)', 'Asia/Tbilisi' => 'Tbilisi (UTC+4)', 'Europe/Istanbul' => 'Istanbul (UTC+3)', 'Europe/Kyiv' => 'Kyiv', 'Europe/London' => 'London', 'Europe/Paris' => 'Paris / Berlin', 'America/New_York' => 'New York'];
-$xs = ['urls_extra' => '', 'probe_next' => 0, 'map_include' => '', 'url_include' => '', 'url_exclude' => '', 'sel_title' => '', 'sel_body' => ''];
+$xs = ['history_pages' => 5, 'urls_extra' => '', 'probe_next' => 0, 'map_include' => '', 'url_include' => '', 'url_exclude' => '', 'sel_title' => '', 'sel_body' => ''];
 
 if ($id) {
     $r = cdb()->query("SELECT * FROM sources WHERE id = $id LIMIT 1");
@@ -22,6 +22,7 @@ if ($id) {
         exit;
     }
     $s = array_merge($s, $row);
+    if ($row['type'] === 'telegram') $s['feed_url'] = '@' . tg_username($row['feed_url']);
     $saved = json_decode($row['extra'] ?? '', true) ?: [];
     $xs = array_merge($xs, $saved, ['urls_extra' => implode("\n", (array)($saved['urls_extra'] ?? []))]);
     $s['start_mode'] = $row['min_published_at'] ? 'date' : 'all';
@@ -38,10 +39,10 @@ $errors = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $s['name'] = trim((string)($_POST['name'] ?? ''));
     $s['feed_url'] = trim((string)($_POST['feed_url'] ?? ''));
-    $s['type'] = in_array($_POST['type'] ?? '', ['rss', 'sitemap'], true) ? $_POST['type'] : 'rss';
+    $s['type'] = in_array($_POST['type'] ?? '', ['rss', 'sitemap', 'telegram', 'facebook'], true) ? $_POST['type'] : 'rss';
     $s['fetch_profile'] = ($_POST['fetch_profile'] ?? '') === 'bot' ? 'bot' : 'browser';
     $s['fetch_full_text'] = isset($_POST['fetch_full_text']) ? 1 : 0;
-    $xs = ['urls_extra' => trim((string)($_POST['urls_extra'] ?? '')), 'probe_next' => isset($_POST['probe_next']) ? 1 : 0,
+    $xs = ['history_pages' => in_array((int)($_POST['history_pages'] ?? 5), [1, 5, 25, 50], true) ? (int)$_POST['history_pages'] : 5, 'urls_extra' => trim((string)($_POST['urls_extra'] ?? '')), 'probe_next' => isset($_POST['probe_next']) ? 1 : 0,
           'map_include' => trim((string)($_POST['map_include'] ?? '')), 'url_include' => trim((string)($_POST['url_include'] ?? '')),
           'url_exclude' => trim((string)($_POST['url_exclude'] ?? '')), 'sel_title' => trim((string)($_POST['sel_title'] ?? '')),
           'sel_body' => trim((string)($_POST['sel_body'] ?? ''))];
@@ -79,8 +80,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!csrf_ok()) $errors[] = 'Session expired, please reload the page.';
     if ($s['name'] === '' || mb_strlen($s['name']) > 190) $errors[] = 'Source name is required (up to 190 characters).';
-    if (!filter_var($s['feed_url'], FILTER_VALIDATE_URL) || !preg_match('#^https?://#i', $s['feed_url']) || strlen($s['feed_url']) > 1024) {
-        $errors[] = 'Feed URL must be a valid http(s) link.';
+    if ($s['type'] === 'telegram') {
+        $tg = tg_username($s['feed_url']);
+        if (!$tg) {
+            $errors[] = 'Enter the username of a public Telegram channel, for example durov or https://t.me/durov';
+        } else {
+            $s['feed_url'] = 'https://t.me/s/' . $tg;
+        }
+        $s['fetch_full_text'] = 0;     // текст поста уже полный
+        $s['dedup_by'] = 'url';
+    } elseif ($s['type'] === 'facebook') {
+        if (preg_match('#^(https?://)?([\w.-]+\.)?(facebook|fb)\.com#i', $s['feed_url']) || !preg_match('#^https?://#i', $s['feed_url'])) {
+            $errors[] = 'Facebook cannot be read directly. Create a feed for the public page or group in rss.app (or a similar service) and paste that RSS URL here.';
+        }
+        $s['fetch_full_text'] = 0;     // страницы Facebook закрыты логином
+    }
+    if ($s['type'] !== 'telegram' && (!filter_var($s['feed_url'], FILTER_VALIDATE_URL) || !preg_match('#^https?://#i', $s['feed_url']) || strlen($s['feed_url']) > 1024)) {
+        if (!$errors) $errors[] = 'Feed URL must be a valid http(s) link.';
     }
     if ($newCat !== '' && mb_strlen($newCat) > 120) $errors[] = 'Category name is too long.';
 
@@ -140,7 +156,7 @@ if ($errors): ?>
     <div>
       <label class="<?= ui('lbl') ?>" for="type"><?= e(t('Type')) ?></label>
       <select id="type" name="type" class="<?= ui('inp') ?>">
-        <?php foreach (['rss' => 'RSS', 'sitemap' => 'Sitemap'] as $v => $l): ?>
+        <?php foreach (['rss' => 'RSS feed', 'sitemap' => 'Sitemap', 'telegram' => 'Telegram channel', 'facebook' => 'Facebook (via RSS service)'] as $v => $l): ?>
           <option value="<?= $v ?>" <?= $s['type'] === $v ? 'selected' : '' ?>><?= $l ?></option>
         <?php endforeach; ?>
       </select>
@@ -149,7 +165,9 @@ if ($errors): ?>
 
   <div>
     <label class="<?= ui('lbl') ?>" for="feed_url"><span id="urlLabel"><?= e(t('Feed URL')) ?></span></label>
-    <input id="feed_url" name="feed_url" type="url" required maxlength="1024" placeholder="https://news.am/rss" value="<?= e($s['feed_url']) ?>" class="<?= ui('inp') ?>">
+    <input id="feed_url" name="feed_url" type="text" inputmode="url" required maxlength="1024" placeholder="https://news.am/rss" value="<?= e($s['feed_url']) ?>" class="<?= ui('inp') ?>">
+    <div id="tgBox" class="hidden mt-2 text-sm font-medium"><?= e(t('Only public channels work: https://t.me/s/<username> must show the posts in a browser. Posts with only a photo or video (no text) are skipped. The text of each post is saved in full.')) ?></div>
+    <div id="fbBox" class="hidden mt-2 rounded-lg border border-black bg-ms-light/40 px-3 py-2 text-sm font-medium"><?= e(t('Facebook does not let servers read pages directly. Create a feed for the public page or group in rss.app (or a similar service), paste its RSS URL here, and the crawler will treat it like any feed.')) ?></div>
   </div>
 
   <div class="grid gap-5 sm:grid-cols-2">
@@ -168,6 +186,15 @@ if ($errors): ?>
       <input id="new_category" name="new_category" maxlength="120" class="<?= ui('inp') ?>">
     </div>
     <?php endif; ?>
+  </div>
+
+  <div id="tgHist" class="hidden">
+    <label class="<?= ui('lbl') ?>" for="history_pages"><?= e(t('History to download on the first fetch')) ?></label>
+    <select id="history_pages" name="history_pages" class="<?= ui('inp') ?> sm:max-w-sm">
+      <?php foreach ([1 => 'Last ~20 posts', 5 => 'Last ~100 posts', 25 => 'Last ~500 posts', 50 => 'Last ~1000 posts'] as $v => $l): ?>
+        <option value="<?= $v ?>" <?= (int)$xs['history_pages'] === $v ? 'selected' : '' ?>><?= e(t($l)) ?></option>
+      <?php endforeach; ?>
+    </select>
   </div>
 
   <div id="smBox" class="hidden rounded-xl border border-black bg-ms-light/40 p-4 space-y-4">
@@ -294,12 +321,20 @@ document.getElementById('pv_btn').onclick = async () => {
   } catch (e) { out.textContent = 'Request failed'; }
 };
 const typeSel = document.getElementById('type');
-function syncType() {
-  const sm = typeSel.value === 'sitemap';
-  document.getElementById('smBox').classList.toggle('hidden', !sm);
-  document.getElementById('urlLabel').textContent = sm ? '<?= e(t('Sitemap URL')) ?>' : '<?= e(t('Feed URL')) ?>';
-}
+const L = {rss: ['<?= e(t('Feed URL')) ?>', 'https://news.am/rss'], sitemap: ['<?= e(t('Sitemap URL')) ?>', 'https://site.am/sitemap_index.xml'],
+           telegram: ['<?= e(t('Telegram channel username')) ?>', '@durov  or  https://t.me/durov'], facebook: ['<?= e(t('RSS feed URL of the Facebook page (from rss.app)')) ?>', 'https://rss.app/feeds/xxxx.xml']};
 const ftBox = document.querySelector('input[name=fetch_full_text]');
+function syncType() {
+  const v = typeSel.value, sm = v === 'sitemap', tg = v === 'telegram', fb = v === 'facebook';
+  document.getElementById('smBox').classList.toggle('hidden', !sm);
+  document.getElementById('tgBox').classList.toggle('hidden', !tg);
+  document.getElementById('tgHist').classList.toggle('hidden', !tg);
+  document.getElementById('fbBox').classList.toggle('hidden', !fb);
+  document.getElementById('urlLabel').textContent = L[v][0];
+  document.getElementById('feed_url').placeholder = L[v][1];
+  ftBox.closest('label').classList.toggle('hidden', tg || fb);
+  document.getElementById('dedup_by').closest('div').classList.toggle('hidden', tg);
+}
 typeSel.onchange = () => { syncType(); if (typeSel.value === 'sitemap') ftBox.checked = true; };
 syncType();
 document.querySelectorAll('input[name=start_mode]').forEach(r => r.onchange = () =>

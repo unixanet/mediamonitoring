@@ -130,6 +130,94 @@ function crawl_parse_feed(string $body, string $tz = 'UTC'): array
     return [$items, null];
 }
 
+// ---------------- Telegram (публичные каналы, веб-превью https://t.me/s/<username>) ----------------
+
+function tg_username(string $v): ?string
+{
+    $v = trim($v);
+    $v = preg_replace('#^(https?://)?(www\.)?t\.me/(s/)?#i', '', $v);
+    $v = ltrim(preg_replace('#[/?].*$#', '', $v), '@');
+    return preg_match('/^[A-Za-z][A-Za-z0-9_]{4,31}$/', $v) ? $v : null;
+}
+
+function tg_node_text(DOMNode $n): string
+{
+    foreach (iterator_to_array((new DOMXPath($n->ownerDocument))->query('.//br', $n)) as $br) {
+        $br->parentNode->replaceChild($n->ownerDocument->createTextNode("\n"), $br);
+    }
+    $lines = array_map(fn($l) => trim(preg_replace('/[ \t\x{00A0}]+/u', ' ', $l)), explode("\n", $n->textContent));
+    return trim(preg_replace("/\n{3,}/", "\n\n", implode("\n", $lines)));
+}
+
+// Разбор страницы t.me/s/<name>: [items, наименьший id поста на странице]
+function tg_parse_page(string $html, string $feedUrl): array
+{
+    $d = new DOMDocument();
+    libxml_use_internal_errors(true);
+    $d->loadHTML('<?xml encoding="UTF-8">' . $html, LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_PARSEHUGE);
+    libxml_clear_errors();
+    $x = new DOMXPath($d);
+    $tok = fn($c) => "contains(concat(' ',normalize-space(@class),' '),' $c ')";
+    $items = [];
+    $minId = 0;
+    foreach ($x->query("//div[@data-post and " . $tok('tgme_widget_message') . "]") as $m) {
+        [$chan, $id] = array_pad(explode('/', $m->getAttribute('data-post')), 2, '');
+        if (!ctype_digit($id)) continue;
+        $minId = $minId ? min($minId, (int)$id) : (int)$id;
+        $t = $x->query(".//div[" . $tok('tgme_widget_message_text') . " and not(ancestor::a[" . $tok('tgme_widget_message_reply') . "])]", $m);
+        $text = $t->length ? tg_node_text($t->item(0)) : '';
+        if ($text === '') continue;       // только фото/видео без текста: не сохраняем
+        $dt = $x->query(".//a[" . $tok('tgme_widget_message_date') . "]/time/@datetime", $m);
+        $ts = $dt->length ? crawl_parse_date($dt->item(0)->nodeValue, 'UTC') : null;
+        $first = trim(strtok($text, "\n"));
+        $items[] = [
+            'title' => mb_strlen($first) > 140 ? rtrim(mb_substr($first, 0, 139)) . '…' : $first,
+            'url' => 'https://t.me/' . $chan . '/' . $id,
+            'guid' => $chan . '/' . $id,
+            'ts' => $ts ?: time(),
+            'content' => $text,
+            'raw' => $d->saveHTML($m),
+        ];
+    }
+    return [$items, $minId];
+}
+
+// Страница канала + (при первом запуске) история назад по ?before=<id>
+function tg_collect(mysqli $db, array $src, string $body): array
+{
+    [$items, $minId] = tg_parse_page($body, $src['feed_url']);
+    $cfg = json_decode($src['extra'] ?? '', true) ?: [];
+    $pages = (int)($cfg['history_pages'] ?? 1);
+    $minTs = $src['min_published_at'] ? strtotime($src['min_published_at'] . ' UTC') : null;
+    if ((int)$src['articles_count'] === 0 && $pages > 1 && $minId) {
+        $t0 = time();
+        for ($p = 1; $p < $pages && $minId > 1 && time() - $t0 < 40; $p++) {
+            if ($minTs && $items && min(array_column($items, 'ts')) < $minTs) break;
+            usleep(700000);
+            $st = new stdClass();
+            $st->body = '';
+            $st->etag = $st->lastmod = null;
+            $st->cf = false;
+            $ch = crawl_make_handle($src, true, $st, $src['feed_url'] . '?before=' . $minId, 'page');
+            curl_exec($ch);
+            if (curl_errno($ch) || (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE) !== 200) break;
+            [$more, $mid] = tg_parse_page($st->body, $src['feed_url']);
+            if (!$mid || $mid >= $minId) break;
+            $items = array_merge($items, $more);
+            $minId = $mid;
+        }
+    }
+    return [$items, null];
+}
+
+function crawl_parse_any(mysqli $db, array $src, string $body): array
+{
+    if ($src['type'] === 'telegram') {
+        return tg_collect($db, $src, $body);
+    }
+    return crawl_parse_feed($body, $src['feed_timezone'] ?? 'UTC');
+}
+
 function crawl_dedup_key(string $mode, array $i): string
 {
     switch ($mode) {
@@ -284,7 +372,7 @@ function crawl_process(mysqli $db, array $src, $ch, stdClass $st, int $errno): a
     $unfinished = 0;
     $warn = '';
     if (empty($res['not_modified'])) {
-        [$items, $perr] = crawl_parse_feed($st->body, $src['feed_timezone'] ?? 'UTC');
+        [$items, $perr] = crawl_parse_any($db, $src, $st->body);
         if ($items === null) {
             $details .= "\n\nResponse start:\n" . mb_substr(crawl_clean($st->body), 0, 300);
             return crawl_fail($db, $src, $res, 'parse_error', $perr, $details);
@@ -377,7 +465,9 @@ function crawl_process(mysqli $db, array $src, $ch, stdClass $st, int $errno): a
             journal_add($db, $journal);
         }
         if ($res['feed'] === 0) {
-            $warn = 'The feed is valid but contains no items.';
+            $warn = $src['type'] === 'telegram'
+                ? 'No posts found. The channel must be public with web preview enabled: https://t.me/s/<username> must show posts in a browser. Posts with only photos or video (no text) are skipped.'
+                : 'The feed is valid but contains no items.';
         }
     }
 
@@ -588,9 +678,9 @@ function crawl_sitemap_source(mysqli $db, array $src, bool $force): array
 // Один источник синхронно (Fetch now / Start / первый забег). Принудительно, без ETag. Затем сразу тянем полный текст.
 function crawl_source_sync(mysqli $db, array $src): array
 {
-    if (!in_array($src['type'], ['rss', 'sitemap'], true)) {
+    if (!in_array($src['type'], ['rss', 'sitemap', 'telegram', 'facebook'], true)) {
         return ['ok' => false, 'http' => 0, 'new' => 0, 'feed' => 0, 'old' => 0, 'dup' => 0, 'ms' => 0,
-                'error' => 'Only RSS and Sitemap sources are supported by the crawler for now.'];
+                'error' => 'This source type is not supported by the crawler.'];
     }
     set_time_limit(120);
     $db->query('UPDATE sources SET next_check_at = NOW() + INTERVAL 90 SECOND WHERE id = ' . (int)$src['id']);   // занять, чтобы демон не дублировал

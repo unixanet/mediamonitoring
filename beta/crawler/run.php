@@ -37,7 +37,7 @@ while (true) {
         }
 
         $due = [];
-        $r = $db->query("SELECT * FROM sources WHERE is_active = 1 AND type IN ('rss','sitemap') AND (next_check_at IS NULL OR next_check_at <= NOW())
+        $r = $db->query("SELECT * FROM sources WHERE is_active = 1 AND type IN ('rss','sitemap','telegram','facebook') AND (next_check_at IS NULL OR next_check_at <= NOW())
             ORDER BY next_check_at LIMIT " . BATCH);
         while ($r && ($x = $r->fetch_assoc())) {
             $due[] = $x;
@@ -46,7 +46,7 @@ while (true) {
             $ids = implode(',', array_map(fn($s) => (int)$s['id'], $due));
             $db->query("UPDATE sources SET next_check_at = NOW() + INTERVAL 90 SECOND WHERE id IN ($ids)");   // занять
             $t = microtime(true);
-            $s = crawl_run_batch($db, array_values(array_filter($due, fn($d) => $d['type'] === 'rss')), MAX_PARALLEL);
+            $s = crawl_run_batch($db, array_values(array_filter($due, fn($d) => $d['type'] !== 'sitemap')), MAX_PARALLEL);
             foreach ($due as $d) {
                 if ($d['type'] === 'sitemap') {
                     $sr = crawl_sitemap_source($db, $d, false);
