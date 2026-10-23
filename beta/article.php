@@ -4,8 +4,8 @@ require __DIR__ . '/lib/layout.php';
 $user = require_perm('search');
 
 $id = (int)($_GET['id'] ?? 0);
-$r = cdb()->query("SELECT a.*, s.name AS source_name, c.name AS category FROM articles a
-    JOIN sources s ON s.id = a.source_id LEFT JOIN categories c ON c.id = s.category_id WHERE a.id = $id");
+$r = cdb()->query("SELECT a.*, COALESCE(s.name, '(deleted source)') AS source_name, c.name AS category FROM articles a
+    LEFT JOIN sources s ON s.id = a.source_id LEFT JOIN categories c ON c.id = s.category_id WHERE a.id = $id");
 $a = $r ? $r->fetch_assoc() : null;
 
 app_start($a['title'] ?? t('Article'), 'search', $user);
@@ -15,7 +15,14 @@ if (!$a) {
     exit;
 }
 ?>
-<a href="javascript:history.back()" class="<?= ui('link') ?>">← <?= e(t('Back')) ?></a>
+<?php
+$ref = (string)($_SERVER['HTTP_REFERER'] ?? '');
+$rp = parse_url($ref);
+$back = ($rp && ($rp['host'] ?? '') === explode(':', $_SERVER['HTTP_HOST'] ?? '')[0] && !preg_match('#/(article|article_action|login)\.php#', $rp['path'] ?? ''))
+    ? ($rp['path'] ?? '/') . (isset($rp['query']) ? '?' . $rp['query'] : '')
+    : (can('articles.view') ? '/articles.php?source=' . (int)$a['source_id'] : '/search.php');
+?>
+<a href="<?= e($back) ?>" class="<?= ui('link') ?>">← <?= e(t('Back')) ?></a>
 <article class="<?= ui('card') ?> mt-3 max-w-4xl p-5 sm:p-8">
   <h1 class="text-2xl sm:text-3xl font-bold leading-snug"><?= e($a['title']) ?></h1>
   <div class="mt-3 flex flex-wrap gap-2">

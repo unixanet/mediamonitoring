@@ -201,7 +201,15 @@ function src_actions(array $s, string $back = 'list'): void
     echo $s['is_active'] ? $f('fetch', 'btn', '▶ ' . t('Fetch now')) : $f('start', 'btn', '▶ ' . t('Start'));
     if ($s['is_active']) echo $f('pause', 'btn2', '❚❚ ' . t('Pause'));
     echo '<a class="' . ui('btn2') . ' !px-3 !py-1.5" href="/source_edit.php?id=' . $id . '">' . e(t('Edit')) . '</a>';
-    echo $f('delete', 'btnd', t('Delete'), t('Delete this source and ALL its articles? This cannot be undone.'));
+    echo '<button type="button" onclick="document.getElementById(\'del' . $id . '\').showModal()" class="' . ui('btnd') . ' !px-3 !py-1.5">' . e(t('Delete')) . '</button>';
+    echo '<dialog id="del' . $id . '" class="rounded-2xl border border-black p-0 shadow-2xl backdrop:bg-black/50 w-[min(92vw,28rem)]"><form method="post" action="/source_action.php" class="p-6 space-y-3">'
+        . '<input type="hidden" name="csrf" value="' . e(csrf()) . '"><input type="hidden" name="id" value="' . $id . '"><input type="hidden" name="back" value="' . $back . '">'
+        . '<h3 class="text-lg font-bold">' . e(t('Delete source')) . ' “' . e($s['name']) . '”</h3>'
+        . '<p class="text-sm font-medium">' . e(t('Choose what to delete. This cannot be undone.')) . '</p>'
+        . '<button name="act" value="delete_only" class="' . ui('btn2') . ' w-full !justify-start text-left">' . e(t('Delete only the source (keep its articles in the database)')) . '</button>'
+        . '<button name="act" value="delete_all" class="' . ui('btnd') . ' w-full !justify-start text-left">' . e(t('Delete the source AND all its articles and logs')) . '</button>'
+        . '<button type="button" onclick="this.closest(\'dialog\').close()" class="' . ui('btn2') . ' w-full">' . e(t('Cancel')) . '</button>'
+        . '</form></dialog>';
     echo '</div>';
 }
 

@@ -304,8 +304,8 @@ function crawl_process(mysqli $db, array $src, $ch, stdClass $st, int $errno): a
             $content = mb_substr($i['content'], 0, 500000);
             $image = $photo && $i['image'] !== '' ? mb_substr($i['image'], 0, 2048) : null;
             $pub = gmdate('Y-m-d H:i:s', $i['ts']);
-            // полный текст в ленте (длинный) берём как есть, иначе статья ждёт воркер полного текста
-            $needFull = $src['fetch_full_text'] && $url !== '' && mb_strlen($content) < 1500;
+            // что отдала лента, то и сохраняем; страницу статьи открываем только если у источника включена эта опция
+            $needFull = $src['fetch_full_text'] && $url !== '';
             $status = $needFull ? 'pending' : 'full';
             $nr = $needFull ? gmdate('Y-m-d H:i:s') : null;
             $ins->bind_param('isssssssss', $sid, $dh, $url, $title, $content, $image, $pub, $ch2, $status, $nr);

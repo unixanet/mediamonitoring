@@ -9,7 +9,7 @@ $dedupModes = ['url' => 'By article URL', 'guid' => 'By feed GUID', 'title' => '
 
 $s = ['name' => '', 'type' => 'rss', 'feed_url' => '', 'download_mode' => 'text', 'dedup_by' => 'url', 'category_id' => null,
       'start_mode' => 'all', 'start_date' => '', 'check_interval_sec' => 120, 'is_active' => 1,
-      'fetch_profile' => 'browser', 'fetch_full_text' => 1];
+      'fetch_profile' => 'browser', 'fetch_full_text' => 0];
 $xs = ['urls_extra' => '', 'probe_next' => 0, 'map_include' => '', 'url_include' => '', 'url_exclude' => '', 'sel_title' => '', 'sel_body' => ''];
 
 if ($id) {
@@ -197,6 +197,7 @@ if ($errors): ?>
     <label class="flex items-center gap-3 self-start sm:mt-7 rounded-lg border border-black px-4 py-2.5 text-sm font-semibold cursor-pointer">
       <input type="checkbox" name="fetch_full_text" value="1" <?= $s['fetch_full_text'] ? 'checked' : '' ?> class="h-4 w-4 accent-black">
       <?= e(t('Open article pages to get the full text')) ?>
+      <span class="font-medium">(<?= e(t('RSS: only if the feed has just short descriptions')) ?>)</span>
     </label>
   </div>
 
@@ -274,7 +275,9 @@ function syncType() {
   document.getElementById('smBox').classList.toggle('hidden', !sm);
   document.getElementById('urlLabel').textContent = sm ? '<?= e(t('Sitemap URL')) ?>' : '<?= e(t('Feed URL')) ?>';
 }
-typeSel.onchange = syncType; syncType();
+const ftBox = document.querySelector('input[name=fetch_full_text]');
+typeSel.onchange = () => { syncType(); if (typeSel.value === 'sitemap') ftBox.checked = true; };
+syncType();
 document.querySelectorAll('input[name=start_mode]').forEach(r => r.onchange = () =>
   document.getElementById('dateWrap').classList.toggle('hidden', document.querySelector('input[name=start_mode]:checked').value !== 'date'));
 </script>

@@ -29,8 +29,8 @@ $st = sort_state(['date' => 'a.published_at', 'title' => 'a.title', 'source' => 
 $page = page_no();
 $per = 50;
 $rows = [];
-$r = cdb()->query("SELECT a.id, a.title, a.published_at, a.source_id, a.content_status, s.name AS source_name
-    FROM articles a JOIN sources s ON s.id = a.source_id WHERE $where
+$r = cdb()->query("SELECT a.id, a.title, a.published_at, a.source_id, a.content_status, COALESCE(s.name, '(deleted source)') AS source_name
+    FROM articles a LEFT JOIN sources s ON s.id = a.source_id WHERE $where
     ORDER BY {$st['sql']}, a.id DESC LIMIT " . ($per + 1) . ' OFFSET ' . (($page - 1) * $per));
 while ($r && ($x = $r->fetch_assoc())) {
     $rows[] = $x;

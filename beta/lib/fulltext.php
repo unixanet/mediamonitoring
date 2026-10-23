@@ -1,7 +1,7 @@
 <?php
 // Полный текст статьи: загрузка страницы, извлечение заголовка/даты/текста/фото, повторы при неудаче.
 const FT_MAX_ATTEMPTS = 5;
-const FT_MIN_LEN = 100;   // короче этого текст считается неполным
+const FT_MIN_LEN = 30;    // для статей из sitemap (текста в ленте нет): короче этого страница считается пустой
 
 function ft_delay(int $attempt): int
 {
@@ -226,8 +226,10 @@ function ft_handle(mysqli $db, array $job, $ch, stdClass $st, int $errno, array 
         $html = ft_decode($st->body, (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE));
         $ex = ft_extract($html, json_decode($src['extra'] ?? '', true) ?: []);
         $len = mb_strlen($ex['text']);
-        $have = $kind === 'article' ? mb_strlen((string)$job['content']) : 0;
-        if ($len < FT_MIN_LEN || $len < $have) {
+        if ($len === 0) {
+            $event = 'fulltext_failed';
+            $reason = 'No article text found on the page';
+        } elseif ($kind === 'queue' && $len < FT_MIN_LEN) {
             $event = 'fulltext_failed';
             $reason = 'Extracted text too short (' . $len . ' chars)';
         }
@@ -241,7 +243,8 @@ function ft_handle(mysqli $db, array $job, $ch, stdClass $st, int $errno, array 
         $aid = (int)$job['id'];
         $att = (int)$job['fetch_attempts'] + 1;
         if ($reason === '') {
-            $text = $ex['text'];
+            // со страницы взяли больше, чем было в ленте, значит заменяем; иначе оставляем то, что отдала лента
+            $text = mb_strlen($ex['text']) > mb_strlen(trim((string)$job['content'])) ? $ex['text'] : (string)$job['content'];
             $ch2 = md5($job['title'] . "\n" . $text);
             $img = $photo && $ex['image'] !== '' ? mb_substr($ex['image'], 0, 2048) : null;
             $q = $db->prepare("UPDATE articles SET content=?, content_hash=UNHEX(?), content_status='full', fail_reason=NULL, next_retry_at=NULL,

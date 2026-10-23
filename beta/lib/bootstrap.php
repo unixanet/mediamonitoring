@@ -12,6 +12,8 @@ session_set_cookie_params([
     'samesite' => 'Lax',
 ]);
 session_start();
+header('X-Robots-Tag: noindex, nofollow, noarchive');
+header('Cache-Control: no-store');
 
 function connect_db(array $c): mysqli
 {

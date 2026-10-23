@@ -40,7 +40,13 @@ switch ($act) {
         cdb()->query("UPDATE sources SET is_active = 0 WHERE id = $id");
         flash_set('ok', 'Source paused.');
         break;
-    case 'delete':
+    case 'delete_only':
+        cdb()->query("DELETE FROM url_queue WHERE source_id = $id");
+        cdb()->query("DELETE FROM sources WHERE id = $id");
+        flash_set('ok', 'Source deleted. Its articles were kept in the database.');
+        $back = '/sources.php';
+        break;
+    case 'delete_all':
         set_time_limit(300);
         do {
             $ids = [];

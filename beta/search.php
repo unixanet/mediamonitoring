@@ -23,9 +23,9 @@ while ($r && ($x = $r->fetch_assoc())) {
 if ($q !== '' && !$tooShort) {
     $like = '%' . addcslashes($q, '\\%_') . '%';
     $cond = $scope === 'title' ? 'a.title LIKE ?' : '(a.title LIKE ? OR a.content LIKE ?)';
-    $sql = "SELECT a.id, a.title, a.published_at, a.source_id, a.content_status, s.name AS source_name,
+    $sql = "SELECT a.id, a.title, a.published_at, a.source_id, a.content_status, COALESCE(s.name, '(deleted source)') AS source_name,
             SUBSTRING(a.content, GREATEST(LOCATE(?, a.content) - 80, 1), 240) AS snip
-            FROM articles a JOIN sources s ON s.id = a.source_id
+            FROM articles a LEFT JOIN sources s ON s.id = a.source_id
             WHERE $cond" . ($catId ? ' AND s.category_id = ' . $catId : '') . "
             ORDER BY {$st['sql']}, a.id DESC LIMIT " . ($per + 1) . ' OFFSET ' . (($page - 1) * $per);
     $stm = cdb()->prepare($sql);
