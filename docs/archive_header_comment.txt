@@ -1,0 +1,84 @@
+/**
+ * ============================================================
+ * MANTICORE SEARCH: ДОСТУП, ПОДКЛЮЧЕНИЕ, ИСТОРИЯ НАСТРОЙКИ
+ * ============================================================
+ * Блок для вставки в начало PHP-файла поиска по архиву (archive.php).
+ * Источник: рабочая сессия настройки Manticore, июль 2026.
+ *
+ * СЕРВЕР
+ * - Hostname: searchdb, IP 65.75.203.244
+ * - ОС: Ubuntu 24.04.4 LTS
+ * - Manticore Search 28.4.4 (columnar 13.8.1, secondary 13.8.1, knn 13.8.1)
+ * - Конфиг: /etc/manticoresearch/manticore.conf
+ * - Данные: /var/lib/manticore
+ * - Логи: /var/log/manticore/ (searchd.log, query.log)
+ * - Скрипты синхронизации: /root/manticore-sync/
+ *
+ * ДОСТУП И ПОДКЛЮЧЕНИЕ
+ * - Протокол MySQL, порт 9306. Подключение через mysqli:
+ *   host 65.75.203.244, port 9306, пользователь и пароль ПУСТЫЕ
+ *   (аутентификации в Manticore нет).
+ * - Защита только сетевая: ufw разрешает порт 9306 только с
+ *   главного сервера 207.180.203.115.
+ *   (ufw allow from 207.180.203.115 to any port 9306)
+ * - В конфиге: listen 0.0.0.0:9306 (mysql); 9308 (http) и 9312
+ *   слушают только 127.0.0.1.
+ * - Пароли баз-источников (WordPress) здесь не продублированы,
+ *   они лежат в sync.php и в конфигурационных частях PHP-файлов.
+ *
+ * ТАБЛИЦА articles (создана с min_infix_len='3')
+ * - id bigint, title TEXT, content TEXT, post_date TIMESTAMP,
+ *   url STRING, source STRING
+ * - content: HTML очищается перед индексацией
+ *   (strip_tags + схлопывание пробелов).
+ * - Поиск как LIKE по подстроке: MATCH('*слово*'); только по
+ *   заголовку: MATCH('@title *слово*').
+ *
+ * ИСТОЧНИКИ И ID
+ * - media 207.180.236.4 (множитель 1), pulse 158.69.208.128 (2),
+ *   julbaz 130.254.47.26 (3), balance2 199.85.8.120 (4).
+ * - ID в индексе = множитель * 10000000000 + исходный ID поста.
+ * - Telegram и Facebook (БД telegram_med, facebook_med на
+ *   194.238.28.184) в Manticore не индексируются, LIKE-запросы.
+ *
+ * СИНХРОНИЗАЦИЯ (на сервере Manticore, /root/manticore-sync/)
+ * - index.php: полный реиндекс, запускается вручную.
+ *   При первой индексации залито 583004 статьи.
+ * - sync.php: инкрементальный синк, cron каждые 2 минуты.
+ *   Чекпоинты по источникам в checkpoints.json (по post_modified),
+ *   BATCH_SIZE=1000, lock-файл sync.lock, ротация логов 3 дня.
+ * - Служебные таблицы Manticore: sync_runs (история прогонов) и
+ *   search_log (лог поисков); записи старше 90 дней удаляются.
+ * - Дашборд: manticore_status.php (защита ключом $SECRET_KEY в URL).
+ *
+ * ЧТО БЫЛО СДЕЛАНО
+ * 1. Установлен Manticore 28.4.4 на отдельный VPS (searchdb).
+ * 2. Порт 9306 открыт наружу, доступ ограничен ufw до одного IP.
+ * 3. Тестовый файл manticore_test.php подтвердил, что поиск работает
+ *    с главного сервера. Первый тест на источнике julbaz:
+ *    85560 статей занимали 435 МБ.
+ * 4. Проиндексированы все 4 источника (583004 статьи).
+ * 5. Включён cron для sync.php, добавлен дашборд.
+ * 6. На Manticore по одному переведены файлы: media.php, get.php,
+ *    result.php, entities_articles.php, entities_worker.php,
+ *    trends_cron.php, crisis.php, crisis_alertbot.php, compare.php,
+ *    analytics_data.php, landscape_data.php, source_data.php,
+ *    zlm_data.php, findarticles.php, telegrambot.php,
+ *    telegramdailyreport.php.
+ *
+ * НАЙДЕННЫЕ ПРОБЛЕМЫ И РЕШЕНИЯ
+ * - Без LIMIT Manticore отдаёт только 20 строк.
+ * - max_matches по умолчанию 1000: во всех запросах, тянущих строки,
+ *   добавлять OPTION max_matches=N. COUNT(*) от max_matches не зависит.
+ * - AND title != '' на TEXT-поле молча даёт ноль результатов.
+ * - Дубли ID julbaz из-за тестового индекса с сырыми ID; удалены
+ *   запросом DELETE FROM articles WHERE source='julbaz' AND id < 10000000000.
+ * - Очистка таблицы только через TRUNCATE TABLE.
+ * - Ключевые слова перед '*слово*' прогонять через escapeMatchQuery().
+ * - Слова короче 3 символов в инфиксном режиме не ищутся
+ *   (min_infix_len='3').
+ *
+ * ПРИМЕЧАНИЕ О КАЧЕСТВЕ
+ * - Для армянского эталон качества: поиск по подстроке (LIKE).
+ *   MySQL FULLTEXT / MATCH AGAINST не использовать: выдача хуже.
+ */
