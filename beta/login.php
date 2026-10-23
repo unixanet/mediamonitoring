@@ -38,44 +38,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 page_head('Sign in — Media Monitoring Admin');
 ?>
-<body class="min-h-screen bg-white text-black">
+<body class="min-h-screen bg-white text-black font-sans antialiased">
 <div class="min-h-screen lg:grid lg:grid-cols-2">
 
   <section class="bg-ms text-white px-6 py-10 sm:px-12 lg:py-0 lg:flex lg:flex-col lg:justify-center relative overflow-hidden">
-    <div class="absolute -right-16 -bottom-16 h-64 w-64 rounded-full bg-accent"></div>
+    <div class="absolute -right-24 -top-24 h-72 w-72 rounded-full border border-white/40"></div>
+    <div class="absolute -right-10 -top-10 h-48 w-48 rounded-full border border-white/40"></div>
+    <div class="absolute -left-20 -bottom-20 h-64 w-64 rounded-full border border-white/40"></div>
     <div class="relative flex items-center gap-3">
-      <div class="h-12 w-12 rounded-xl bg-white text-ms flex items-center justify-center text-2xl font-extrabold">M</div>
-      <span class="text-2xl font-extrabold">Media Monitoring</span>
+      <div class="h-12 w-12 rounded-xl bg-white text-ms border border-black shadow-[0_3px_0_0_#000] flex items-center justify-center text-2xl font-bold">M</div>
+      <span class="text-2xl font-bold">Media Monitoring</span>
     </div>
-    <h2 class="relative mt-8 lg:mt-14 text-3xl sm:text-4xl font-extrabold leading-tight max-w-md">Every Armenian news source. One place.</h2>
+    <h2 class="relative mt-8 lg:mt-14 text-3xl sm:text-4xl font-bold leading-tight max-w-md">Every Armenian news source. One place.</h2>
     <p class="relative mt-4 text-lg font-medium text-white max-w-md">Manage sources, users and the crawler.</p>
   </section>
 
-  <main class="flex items-center justify-center px-6 py-10 sm:px-12">
-    <div class="w-full max-w-md">
-      <h1 class="text-3xl font-extrabold text-black"><?= e(t('Sign in')) ?></h1>
-      <div class="mt-2 h-1.5 w-16 rounded-full bg-accent"></div>
+  <main class="flex items-center justify-center px-5 py-10 sm:px-12 bg-ms-light/50">
+    <div class="w-full max-w-md <?= ui('card') ?> p-6 sm:p-9">
+      <h1 class="text-3xl font-bold"><?= e(t('Sign in')) ?></h1>
+      <p class="mt-1 font-medium text-ms-dark"><?= e(t('Welcome back. Enter your details.')) ?></p>
 
       <?php if ($error): ?>
-        <div class="mt-6 rounded-xl border-2 border-red-600 bg-red-50 text-red-900 font-semibold px-4 py-3"><?= e(t($error)) ?></div>
+        <div class="mt-5 rounded-xl border border-red-700 bg-red-50 text-red-900 text-sm font-semibold px-4 py-3"><?= e(t($error)) ?></div>
       <?php endif; ?>
 
-      <form method="post" class="mt-8 space-y-5" autocomplete="on">
+      <form method="post" class="mt-6 space-y-5" autocomplete="on">
         <input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
         <div>
-          <label for="username" class="block font-bold text-black mb-1.5"><?= e(t('Username')) ?></label>
+          <label for="username" class="<?= ui('lbl') ?>"><?= e(t('Username')) ?></label>
           <input id="username" name="username" type="text" required autofocus autocomplete="username"
-                 value="<?= e((string)($_POST['username'] ?? '')) ?>"
-                 class="w-full rounded-xl border-2 border-ms px-4 py-3 text-black bg-white focus:outline-none focus:ring-4 focus:ring-ms-mid">
+                 value="<?= e((string)($_POST['username'] ?? '')) ?>" class="<?= ui('inp') ?>">
         </div>
         <div>
-          <label for="password" class="block font-bold text-black mb-1.5"><?= e(t('Password')) ?></label>
-          <input id="password" name="password" type="password" required autocomplete="current-password"
-                 class="w-full rounded-xl border-2 border-ms px-4 py-3 text-black bg-white focus:outline-none focus:ring-4 focus:ring-ms-mid">
+          <label for="password" class="<?= ui('lbl') ?>"><?= e(t('Password')) ?></label>
+          <input id="password" name="password" type="password" required autocomplete="current-password" class="<?= ui('inp') ?>">
         </div>
-        <button type="submit" class="w-full rounded-xl bg-accent hover:bg-accent-dark text-white text-lg font-bold py-3.5 transition focus:outline-none focus:ring-4 focus:ring-orange-300">
-          <?= e(t('Sign in')) ?>
-        </button>
+        <button type="submit" class="<?= ui('btn') ?> w-full !py-3 !text-base"><?= e(t('Sign in')) ?></button>
       </form>
     </div>
   </main>

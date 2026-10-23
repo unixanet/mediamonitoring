@@ -11,83 +11,125 @@ function page_head(string $title): void
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config = { theme: { extend: { colors: {
-  ms: { DEFAULT: '#0078D4', dark: '#005A9E', light: '#EAF4FD', mid: '#B3D7F5' },
-  accent: { DEFAULT: '#E05A00', dark: '#B84A00', light: '#FFF0E3' }
-} } } };
+  ms: { DEFAULT: '#0078D4', dark: '#005A9E', light: '#EAF4FD', mid: '#B3D7F5' }
+}, fontFamily: { sans: ['Inter', 'Segoe UI', 'system-ui', 'sans-serif'] } } } };
 </script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <?php }
 
-function nav_items(): array
+// [ключ => [ссылка, подпись, право, иконка(path)]] ; группа Sources с подменю
+function nav_tree(): array
 {
     return [
-        'dashboard' => ['/', 'Dashboard', 'M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10'],
-        'sources'   => ['/sources.php', 'Sources', 'M4 6h16M4 12h16M4 18h10'],
+        ['dashboard', '/', 'Dashboard', 'dashboard', 'M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10'],
+        ['group', 'Sources', 'M4 6h16M4 12h16M4 18h10', [
+            ['sources', '/sources.php', 'All sources', 'sources.view'],
+            ['categories', '/categories.php', 'Categories', 'categories.view'],
+            ['source_add', '/source_edit.php', 'Add source', 'source.add'],
+        ]],
+        ['search', '/search.php', 'Search', 'search', 'M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z'],
+        ['users', '/users.php', 'Users', 'users.view', 'M17 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2M10 10a4 4 0 100-8 4 4 0 000 8zM21 20v-2a4 4 0 00-3-3.9'],
     ];
+}
+
+function nav_link(string $href, string $label, bool $on, string $icon = '', bool $sub = false): string
+{
+    $cls = 'flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-sm font-semibold transition '
+        . ($sub ? 'ml-5 ' : '') . ($on ? 'bg-ms text-white border border-black shadow-[0_2px_0_0_#000]' : 'text-black border border-transparent hover:bg-ms-light');
+    $svg = $icon ? '<svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="' . e($icon) . '"/></svg>' : '<span class="h-1.5 w-1.5 rounded-full bg-current"></span>';
+    return '<a href="' . e($href) . '" class="' . $cls . '">' . $svg . e(t($label)) . '</a>';
 }
 
 function app_start(string $title, string $active, array $user): void
 {
-    page_head($title . ' — Media Monitoring Admin'); ?>
-<body class="min-h-screen bg-white text-black">
+    page_head($title . ' — Media Monitoring Admin');
+    $initial = e(strtoupper(mb_substr($user['username'], 0, 1)));
+    ?>
+<body class="min-h-screen bg-ms-light/50 text-black font-sans antialiased">
 <div class="min-h-screen lg:flex">
-
-  <!-- Mobile top bar -->
-  <header class="lg:hidden sticky top-0 z-30 bg-white border-b-4 border-accent flex items-center justify-between px-4 py-3">
-    <button id="menuBtn" aria-label="Menu" class="h-10 w-10 rounded-lg bg-ms text-white flex items-center justify-center">
-      <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-    </button>
-    <span class="font-extrabold text-black">Media Monitoring</span>
-    <span class="h-10 w-10 rounded-full bg-accent text-white flex items-center justify-center font-bold"><?= e(strtoupper(substr($user['username'], 0, 1))) ?></span>
-  </header>
-
   <div id="overlay" class="hidden fixed inset-0 z-30 bg-black/50 lg:hidden"></div>
 
-  <!-- Sidebar -->
-  <aside id="sidebar" class="fixed lg:sticky top-0 z-40 h-screen w-72 shrink-0 -translate-x-full lg:translate-x-0 transition-transform bg-white border-r-2 border-ms-mid flex flex-col">
-    <div class="px-6 py-6 flex items-center gap-3 border-b-4 border-accent">
-      <div class="h-11 w-11 rounded-xl bg-ms text-white flex items-center justify-center text-xl font-extrabold">M</div>
+  <aside id="sidebar" class="fixed lg:sticky top-0 z-40 h-screen w-72 shrink-0 -translate-x-full lg:translate-x-0 transition-transform bg-white border-r border-black flex flex-col">
+    <div class="px-5 py-5 flex items-center gap-3 border-b border-black/10">
+      <div class="h-10 w-10 rounded-xl bg-ms text-white border border-black shadow-[0_2px_0_0_#000] flex items-center justify-center text-lg font-bold">M</div>
       <div class="leading-tight">
-        <div class="font-extrabold text-black">Media Monitoring</div>
-        <div class="text-sm font-semibold text-ms">Admin · beta</div>
+        <div class="font-bold">Media Monitoring</div>
+        <div class="text-xs font-semibold text-ms">Admin · beta</div>
       </div>
     </div>
-    <nav class="flex-1 p-4 space-y-1.5">
-      <?php foreach (nav_items() as $key => [$href, $label, $icon]): $on = $key === $active; ?>
-        <a href="<?= e($href) ?>" class="flex items-center gap-3 rounded-xl px-4 py-3 font-semibold transition <?= $on ? 'bg-ms text-white' : 'text-black hover:bg-ms-light' ?>">
-          <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="<?= e($icon) ?>"/></svg>
-          <?= e(t($label)) ?>
-        </a>
-      <?php endforeach; ?>
+    <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+      <?php foreach (nav_tree() as $n):
+        if ($n[0] === 'group') {
+            $kids = array_filter($n[3], fn($k) => can($k[3]));
+            if (!$kids) continue;
+            echo '<div class="pt-3 pb-1 px-3.5 text-xs font-bold uppercase tracking-wide text-black">' . e(t($n[1])) . '</div>';
+            foreach ($kids as $k) echo nav_link($k[1], $k[2], $k[0] === $active, '', true);
+            continue;
+        }
+        if (!can($n[3])) continue;
+        echo nav_link($n[1], $n[2], $n[0] === $active, $n[4]);
+      endforeach; ?>
     </nav>
-    <div class="p-4 border-t-2 border-ms-mid">
-      <div class="flex items-center gap-3 mb-3">
-        <span class="h-10 w-10 rounded-full bg-accent text-white flex items-center justify-center font-bold"><?= e(strtoupper(substr($user['username'], 0, 1))) ?></span>
-        <div class="leading-tight">
-          <div class="font-bold text-black"><?= e($user['username']) ?></div>
-          <div class="text-sm font-medium text-ms-dark"><?= e($user['role']) ?></div>
-        </div>
-      </div>
-      <a href="/logout.php" class="block text-center rounded-xl border-2 border-black text-black font-semibold py-2 hover:bg-black hover:text-white transition"><?= e(t('Sign out')) ?></a>
+    <div class="p-3 border-t border-black/10">
+      <a href="/profile.php" class="flex items-center gap-3 rounded-xl border <?= $active === 'profile' ? 'border-black bg-ms-light' : 'border-black/10 hover:border-black hover:bg-ms-light' ?> p-3 transition">
+        <span class="h-10 w-10 rounded-full bg-ms text-white border border-black flex items-center justify-center font-bold"><?= $initial ?></span>
+        <span class="leading-tight min-w-0">
+          <span class="block font-bold truncate"><?= e($user['username']) ?></span>
+          <span class="block text-xs font-semibold text-ms-dark"><?= e(t(ucfirst($user['role']))) ?> · <?= e(t('Profile')) ?></span>
+        </span>
+      </a>
+      <a href="/logout.php" class="mt-2 block text-center rounded-lg border border-black text-sm font-semibold py-2 hover:bg-black hover:text-white transition"><?= e(t('Sign out')) ?></a>
     </div>
   </aside>
 
-  <main class="flex-1 min-w-0 px-4 sm:px-8 py-6 sm:py-10 bg-white">
+  <div class="flex-1 min-w-0 flex flex-col">
+    <header class="sticky top-0 z-20 bg-white border-b border-black flex items-center gap-3 px-4 sm:px-8 py-3">
+      <button id="menuBtn" aria-label="Menu" class="lg:hidden h-10 w-10 shrink-0 rounded-lg border border-black bg-ms text-white shadow-[0_2px_0_0_#000] flex items-center justify-center">
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <?php if (can('search')): ?>
+      <form action="/search.php" method="get" class="flex-1 max-w-xl relative">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-ms" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z"/></svg>
+        <input name="q" value="<?= e((string)($_GET['q'] ?? '')) ?>" placeholder="<?= e(t('Search articles…')) ?>" class="<?= ui('inp') ?> pl-10">
+      </form>
+      <?php endif; ?>
+      <a href="/profile.php" class="ml-auto hidden sm:flex items-center gap-2 font-semibold hover:text-ms">
+        <span class="h-9 w-9 rounded-full bg-ms text-white border border-black flex items-center justify-center font-bold"><?= $initial ?></span>
+      </a>
+    </header>
+    <main class="flex-1 px-4 sm:px-8 py-6 sm:py-8">
     <?php if ($f = flash_get()): $ok = $f[0] === 'ok'; ?>
-      <div class="mb-6 rounded-xl border-2 px-4 py-3 font-semibold <?= $ok ? 'border-ms bg-ms-light text-black' : 'border-red-600 bg-red-50 text-red-900' ?>"><?= e($f[1]) ?></div>
+      <div class="mb-6 rounded-xl border px-4 py-3 text-sm font-semibold <?= $ok ? 'border-black bg-ms-light' : 'border-red-700 bg-red-50 text-red-900' ?>"><?= e(t($f[1])) ?></div>
     <?php endif; ?>
 <?php }
 
 function app_end(): void
 { ?>
-  </main>
+    </main>
+  </div>
 </div>
 <script>
 const sb = document.getElementById('sidebar'), ov = document.getElementById('overlay');
-function tog(open) { sb.classList.toggle('-translate-x-full', !open); ov.classList.toggle('hidden', !open); }
+function tog(o) { sb.classList.toggle('-translate-x-full', !o); ov.classList.toggle('hidden', !o); }
 document.getElementById('menuBtn').onclick = () => tog(true);
 ov.onclick = () => tog(false);
 </script>
 </body>
 </html>
 <?php }
+
+function page_title(string $title, string $actions = ''): void
+{
+    echo '<div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><h1 class="' . ui('h1') . '">' . e($title) . '</h1>' . ($actions ? '<div class="flex flex-wrap gap-2">' . $actions . '</div>' : '') . '</div>';
+}
+
+function forbidden(array $user): void
+{
+    http_response_code(403);
+    app_start('Forbidden', '', $user);
+    echo '<div class="' . ui('card') . ' p-8 text-center font-semibold">' . e(t('You do not have permission to open this page.')) . '</div>';
+    app_end();
+    exit;
+}

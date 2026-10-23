@@ -130,11 +130,21 @@ function current_user(): ?array
 function require_login(): array
 {
     $u = current_user();
-    if (!$u) {
-        header('Location: /login.php');
-        exit;
+    if ($u) {
+        // роль и активность берём из БД на каждый запрос
+        $st = db()->prepare('SELECT username, role FROM admin_users WHERE id=? AND is_active=1');
+        $st->bind_param('i', $u['id']);
+        $st->execute();
+        $row = $st->get_result()->fetch_assoc();
+        $st->close();
+        if ($row) {
+            $u = $_SESSION['user'] = ['id' => $u['id'], 'username' => $row['username'], 'role' => $row['role']];
+            return $u;
+        }
+        $_SESSION = [];
     }
-    return $u;
+    header('Location: /login.php');
+    exit;
 }
 
 function too_many_attempts(string $ip): bool
@@ -158,3 +168,5 @@ function log_attempt(string $ip, string $username, bool $ok): void
     $st->execute();
     $st->close();
 }
+
+require __DIR__ . '/helpers.php';

@@ -1,86 +1,119 @@
 <?php
 require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/layout.php';
-$user = require_login();
+$user = require_perm('sources.view');
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok() && isset($_POST['toggle'])) {
-    $id = (int)$_POST['toggle'];
-    cdb()->query("UPDATE sources SET is_active = 1 - is_active, next_check_at = NOW() WHERE id = $id");
-    flash_set('ok', 'Source updated.');
-    header('Location: /sources.php');
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
+    if (isset($_POST['toggle'])) {            // пауза / возобновление
+        $id = (int)$_POST['toggle'];
+        cdb()->query("UPDATE sources SET is_active = 1 - is_active, next_check_at = NOW() WHERE id = $id");
+        flash_set('ok', 'Source updated.');
+    } elseif (isset($_POST['delete'])) {      // удаление источника вместе со статьями
+        $id = (int)$_POST['delete'];
+        set_time_limit(300);
+        do {
+            $ids = [];
+            $r = cdb()->query("SELECT id FROM articles WHERE source_id = $id LIMIT 2000");
+            while ($r && ($x = $r->fetch_row())) {
+                $ids[] = (int)$x[0];
+            }
+            if ($ids) {
+                $in = implode(',', $ids);
+                cdb()->query("DELETE FROM article_raw WHERE article_id IN ($in)");
+                cdb()->query("DELETE FROM articles WHERE id IN ($in)");
+            }
+        } while ($ids);
+        cdb()->query("DELETE FROM sources WHERE id = $id");
+        flash_set('ok', 'Source and its articles deleted.');
+    }
+    header('Location: /sources.php' . ($_GET ? qs([]) : ''));
     exit;
 }
 
+$st = sort_state(['name' => 's.name', 'category' => 'c.name', 'articles' => 's.articles_count', 'last_article' => 's.last_article_at',
+    'last_check' => 's.last_checked_at', 'status' => 's.is_active'], 'name', 'asc');
 $rows = [];
-$r = cdb()->query('SELECT id, name, type, feed_url, download_mode, is_active, check_interval_sec,
-    articles_count, last_article_at, last_checked_at, last_http_code, last_error, consecutive_errors
-    FROM sources ORDER BY name LIMIT 1000');
+$r = cdb()->query('SELECT s.id, s.name, s.type, s.feed_url, s.is_active, s.articles_count, s.last_article_at, s.last_checked_at,
+    s.consecutive_errors, s.last_error, c.name AS category FROM sources s LEFT JOIN categories c ON c.id = s.category_id
+    ORDER BY ' . $st['sql'] . ', s.id LIMIT 1000');
 while ($r && ($x = $r->fetch_assoc())) {
     $rows[] = $x;
 }
 
-app_start(t('Sources'), 'sources', $user); ?>
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-  <div>
-    <h1 class="text-3xl sm:text-4xl font-extrabold"><?= e(t('Sources')) ?></h1>
-    <div class="mt-2 h-1.5 w-16 rounded-full bg-accent"></div>
+function src_badge(array $s): array
+{
+    if (!$s['is_active']) return ['Paused', 'bg-black text-white'];
+    if ($s['consecutive_errors'] > 0) return ['Error', 'bg-red-50 text-red-900 border-red-700'];
+    return ['Active', 'bg-ms text-white'];
+}
+
+function src_actions(array $s): void
+{ ?>
+  <div class="flex flex-wrap gap-2">
+    <a class="<?= ui('btn2') ?> !px-3 !py-1.5" href="/articles.php?source=<?= (int)$s['id'] ?>"><?= e(t('Articles')) ?></a>
+    <a class="<?= ui('btn2') ?> !px-3 !py-1.5" href="/source_edit.php?id=<?= (int)$s['id'] ?>"><?= e(t('Edit')) ?></a>
+    <form method="post"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
+      <button name="toggle" value="<?= (int)$s['id'] ?>" class="<?= ui('btn2') ?> !px-3 !py-1.5"><?= e(t($s['is_active'] ? 'Pause' : 'Resume')) ?></button></form>
+    <form method="post" onsubmit="return confirm('<?= e(t('Delete this source and ALL its articles? This cannot be undone.')) ?>')">
+      <input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
+      <button name="delete" value="<?= (int)$s['id'] ?>" class="<?= ui('btnd') ?> !px-3 !py-1.5"><?= e(t('Delete')) ?></button></form>
   </div>
-  <a href="/source_edit.php" class="inline-flex items-center justify-center gap-2 rounded-xl bg-accent hover:bg-accent-dark text-white font-bold px-5 py-3 transition">
-    <span class="text-xl leading-none">+</span> <?= e(t('Add source')) ?>
-  </a>
-</div>
+<?php }
 
-<?php if (!$rows): ?>
-  <div class="mt-8 rounded-2xl border-2 border-ms bg-ms-light p-8 text-center font-semibold"><?= e(t('No sources yet. Add the first one.')) ?></div>
-<?php else: ?>
-<div class="mt-8 rounded-2xl border-2 border-ms-mid overflow-hidden">
-  <?php foreach ($rows as $s):
-    $err = $s['consecutive_errors'] > 0;
-    if (!$s['is_active']) { $badge = ['Paused', 'bg-accent-light text-black border-accent']; }
-    elseif ($err) { $badge = ['Error', 'bg-red-50 text-red-900 border-red-600']; }
-    else { $badge = ['Active', 'bg-ms-light text-black border-ms']; }
-  ?>
-  <div class="p-4 sm:p-5 border-b-2 border-ms-mid last:border-b-0 bg-white hover:bg-ms-light/50 transition">
-    <div class="flex flex-col lg:flex-row lg:items-center gap-4">
-      <div class="min-w-0 lg:flex-1">
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="text-lg font-extrabold"><?= e($s['name']) ?></span>
-          <span class="rounded-full border-2 px-2.5 py-0.5 text-xs font-bold <?= $badge[1] ?>"><?= e(t($badge[0])) ?></span>
-          <span class="rounded-full border-2 border-black px-2.5 py-0.5 text-xs font-bold uppercase"><?= e($s['type']) ?></span>
-        </div>
-        <div class="mt-1 truncate font-medium text-ms-dark"><?= e($s['feed_url']) ?></div>
-        <?php if ($err && $s['last_error']): ?>
-          <div class="mt-1 text-sm font-semibold text-red-900"><?= e(mb_strimwidth($s['last_error'], 0, 120, '…')) ?></div>
-        <?php endif; ?>
-      </div>
+app_start(t('Sources'), 'sources', $user);
+page_title(t('Sources'), '<a href="/source_edit.php" class="' . ui('btn') . '">+ ' . e(t('Add source')) . '</a>');
 
-      <div class="grid grid-cols-3 gap-3 lg:w-[26rem] text-center">
-        <div class="rounded-xl bg-ms-light px-2 py-2">
-          <div class="text-2xl font-extrabold"><?= number_format((int)$s['articles_count']) ?></div>
-          <div class="text-xs font-bold"><?= e(t('Articles')) ?></div>
-        </div>
-        <div class="rounded-xl bg-ms-light px-2 py-2" title="<?= e(fmt_dt($s['last_article_at'])) ?>">
-          <div class="text-base font-extrabold leading-8"><?= e(ago($s['last_article_at'])) ?></div>
-          <div class="text-xs font-bold"><?= e(t('Last article')) ?></div>
-        </div>
-        <div class="rounded-xl bg-ms-light px-2 py-2" title="<?= e(fmt_dt($s['last_checked_at'])) ?>">
-          <div class="text-base font-extrabold leading-8"><?= e(ago($s['last_checked_at'])) ?></div>
-          <div class="text-xs font-bold"><?= e(t('Last check')) ?></div>
-        </div>
-      </div>
-
-      <div class="flex gap-2 lg:w-44">
-        <a href="/source_edit.php?id=<?= (int)$s['id'] ?>" class="flex-1 text-center rounded-xl bg-ms hover:bg-ms-dark text-white font-bold px-4 py-2 transition"><?= e(t('Edit')) ?></a>
-        <form method="post" class="flex-1">
-          <input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
-          <button name="toggle" value="<?= (int)$s['id'] ?>" class="w-full rounded-xl border-2 border-black text-black font-bold px-4 py-2 hover:bg-black hover:text-white transition">
-            <?= e(t($s['is_active'] ? 'Pause' : 'Resume')) ?>
-          </button>
-        </form>
-      </div>
-    </div>
+if (!$rows): ?>
+  <div class="<?= ui('card') ?> p-8 text-center font-semibold"><?= e(t('No sources yet. Add the first one.')) ?></div>
+<?php else:
+  mobile_sort(['name' => 'Name', 'articles' => 'Articles', 'last_article' => 'Last article', 'status' => 'Status'], $st); ?>
+  <div class="<?= ui('card') ?> overflow-hidden hidden md:block">
+    <table class="w-full">
+      <thead class="bg-ms-light border-b border-black"><tr>
+        <th class="<?= ui('th') ?>"><?= sort_th('Name', 'name', $st) ?></th>
+        <th class="<?= ui('th') ?>"><?= sort_th('Category', 'category', $st) ?></th>
+        <th class="<?= ui('th') ?>"><?= sort_th('Articles', 'articles', $st) ?></th>
+        <th class="<?= ui('th') ?>"><?= sort_th('Last article', 'last_article', $st) ?></th>
+        <th class="<?= ui('th') ?>"><?= sort_th('Last check', 'last_check', $st) ?></th>
+        <th class="<?= ui('th') ?>"><?= sort_th('Status', 'status', $st) ?></th>
+        <th class="<?= ui('th') ?>"></th>
+      </tr></thead>
+      <tbody class="divide-y divide-black/10">
+      <?php foreach ($rows as $s): $b = src_badge($s); ?>
+        <tr class="hover:bg-ms-light/60">
+          <td class="<?= ui('td') ?> max-w-xs">
+            <div class="font-bold"><?= e($s['name']) ?> <span class="<?= ui('chip') ?> ml-1 uppercase"><?= e($s['type']) ?></span></div>
+            <div class="truncate text-sm font-medium text-ms-dark"><?= e($s['feed_url']) ?></div>
+            <?php if ($s['consecutive_errors'] > 0 && $s['last_error']): ?><div class="text-xs font-semibold text-red-800"><?= e(mb_strimwidth($s['last_error'], 0, 80, '…')) ?></div><?php endif; ?>
+          </td>
+          <td class="<?= ui('td') ?> font-medium"><?= $s['category'] ? e($s['category']) : '—' ?></td>
+          <td class="<?= ui('td') ?> font-bold"><?= number_format((int)$s['articles_count']) ?></td>
+          <td class="<?= ui('td') ?> font-medium whitespace-nowrap" title="<?= e(fmt_dt($s['last_article_at'])) ?>"><?= e(ago($s['last_article_at'])) ?></td>
+          <td class="<?= ui('td') ?> font-medium whitespace-nowrap" title="<?= e(fmt_dt($s['last_checked_at'])) ?>"><?= e(ago($s['last_checked_at'])) ?></td>
+          <td class="<?= ui('td') ?>"><span class="<?= ui('chip') ?> <?= $b[1] ?>"><?= e(t($b[0])) ?></span></td>
+          <td class="<?= ui('td') ?>"><?php src_actions($s); ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
   </div>
-  <?php endforeach; ?>
-</div>
+  <div class="md:hidden space-y-3">
+    <?php foreach ($rows as $s): $b = src_badge($s); ?>
+      <div class="<?= ui('card') ?> p-4">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0"><div class="font-bold"><?= e($s['name']) ?></div>
+            <div class="truncate text-sm font-medium text-ms-dark"><?= e($s['feed_url']) ?></div></div>
+          <span class="<?= ui('chip') ?> shrink-0 <?= $b[1] ?>"><?= e(t($b[0])) ?></span>
+        </div>
+        <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div class="rounded-lg border border-black/10 bg-ms-light py-2"><div class="font-bold"><?= number_format((int)$s['articles_count']) ?></div><div class="text-xs font-semibold"><?= e(t('Articles')) ?></div></div>
+          <div class="rounded-lg border border-black/10 bg-ms-light py-2"><div class="text-sm font-bold"><?= e(ago($s['last_article_at'])) ?></div><div class="text-xs font-semibold"><?= e(t('Last article')) ?></div></div>
+          <div class="rounded-lg border border-black/10 bg-ms-light py-2"><div class="text-sm font-bold"><?= e(ago($s['last_checked_at'])) ?></div><div class="text-xs font-semibold"><?= e(t('Last check')) ?></div></div>
+        </div>
+        <?php if ($s['category']): ?><div class="mt-2 text-sm font-semibold"><?= e(t('Category')) ?>: <?= e($s['category']) ?></div><?php endif; ?>
+        <div class="mt-3"><?php src_actions($s); ?></div>
+      </div>
+    <?php endforeach; ?>
+  </div>
 <?php endif;
 app_end();
