@@ -26,6 +26,15 @@ while ($r && ($a = $r->fetch_assoc())) {
     $logs[] = $a;
 }
 
+$ftc = ['full' => 0, 'pending' => 0, 'partial' => 0, 'title_only' => 0];
+$r = cdb()->query("SELECT content_status, COUNT(*) FROM articles WHERE source_id = $id GROUP BY content_status");
+while ($r && ($x = $r->fetch_row())) $ftc[$x[0]] = (int)$x[1];
+$qp = 0; $qf = 0;
+$r = cdb()->query("SELECT status, COUNT(*) FROM url_queue WHERE source_id = $id AND status IN ('pending','failed') GROUP BY status");
+while ($r && ($x = $r->fetch_row())) { if ($x[0] === 'pending') $qp = (int)$x[1]; else $qf = (int)$x[1]; }
+$ftTotal = array_sum($ftc);
+$bad = $ftc['partial'] + $ftc['title_only'];
+$scfg = json_decode($s['extra'] ?? '', true) ?: [];
 $modes = ['text' => 'Text only', 'text_photo' => 'Photo + text'];
 $dedup = ['url' => 'By article URL', 'guid' => 'By feed GUID', 'title' => 'By title', 'title_date' => 'By title + publication day', 'content' => 'By article text'];
 if (!$s['is_active']) { $badge = ['Paused', 'bg-black text-white']; }
@@ -86,6 +95,26 @@ crawler_banner(); ?>
     </section>
 
     <section class="<?= ui('card') ?> p-4">
+      <h2 class="font-bold mb-2"><?= e(t('Full text')) ?></h2>
+      <?php if ($ftTotal): $pct = (int)round(100 * $ftc['full'] / $ftTotal); ?>
+        <div class="h-2.5 rounded-full border border-black overflow-hidden bg-white"><div class="h-full bg-ms" style="width:<?= $pct ?>%"></div></div>
+        <div class="mt-1 text-sm font-bold"><?= $pct ?>% <?= e(t('complete')) ?></div>
+      <?php endif; ?>
+      <dl class="mt-2">
+        <?php
+        kv(t('Complete'), number_format($ftc['full']));
+        kv(t('Pending / retrying'), number_format($ftc['pending'] + $qp));
+        kv(t('Incomplete (title + snippet)'), $bad ? '<a class="text-red-800 hover:underline" href="/articles.php?source=' . $id . '&status=unfinished">' . number_format($bad) . '</a>' : '0');
+        if ($qf) kv(t('Pages never downloaded'), '<span class="text-red-800">' . number_format($qf) . '</span>');
+        ?>
+      </dl>
+      <?php if ($bad || $qf || $ftc['pending']): ?>
+        <form method="post" action="/source_action.php" class="mt-3"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>"><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="back" value="detail">
+          <button name="act" value="retry" class="<?= ui('btn2') ?> w-full"><?= e(t('Retry incomplete articles')) ?></button></form>
+      <?php endif; ?>
+    </section>
+
+    <section class="<?= ui('card') ?> p-4">
       <div class="flex items-center justify-between mb-2">
         <h2 class="font-bold"><?= e(t('Error log')) ?></h2>
         <a href="/logs.php?source=<?= $id ?>&level=all" class="<?= ui('link') ?> text-sm"><?= e(t('View all')) ?> →</a>
@@ -112,6 +141,13 @@ crawler_banner(); ?>
         <?php
         kv(t('Category'), $s['category'] ? e($s['category']) : '—');
         kv(t('What to download'), e(t($modes[$s['download_mode']])));
+        kv(t('Request headers'), e(t(($s['fetch_profile'] ?? 'browser') === 'browser' ? 'Browser-like' : 'Honest bot')));
+        kv(t('Open article pages for full text'), e(t($s['fetch_full_text'] ? 'Yes' : 'No')));
+        if ($s['type'] === 'sitemap') {
+            kv(t('Sitemap probe next number'), e(t(!empty($scfg['probe_next']) ? 'On' : 'Off')));
+            $cur = json_decode($s['state'] ?? '', true)['cur'][0] ?? null;
+            if ($cur) kv(t('Current sitemap'), '<span class="break-all">' . e($cur) . '</span>');
+        }
         kv(t('Duplicate check'), e(t($dedup[$s['dedup_by']])));
         kv(t('Download articles published after'), $s['min_published_at'] ? e(fmt_dt($s['min_published_at'])) : e(t('Everything in the feed')));
         kv(t('Check every'), e((string)($s['check_interval_sec'] / 60)) . ' ' . e(t('min')));

@@ -133,7 +133,7 @@ function render_articles(array $rows, array $st, bool $hasNext, int $page, strin
         <?php foreach ($rows as $a): ?>
           <tr class="hover:bg-ms-light/60">
             <td class="<?= ui('td') ?>">
-              <a class="<?= ui('link') ?>" href="/article.php?id=<?= (int)$a['id'] ?>"><?= hl($a['title'], $q) ?></a>
+              <a class="<?= ui('link') ?>" href="/article.php?id=<?= (int)$a['id'] ?>"><?= hl($a['title'], $q) ?></a> <?= status_chip($a['content_status'] ?? 'full') ?>
               <?php if (!empty($a['snip'])): ?><div class="mt-1 text-sm text-black"><?= hl($a['snip'], $q) ?>…</div><?php endif; ?>
             </td>
             <td class="<?= ui('td') ?> whitespace-nowrap font-medium">
@@ -148,7 +148,7 @@ function render_articles(array $rows, array $st, bool $hasNext, int $page, strin
     <div class="md:hidden space-y-3">
       <?php foreach ($rows as $a): ?>
         <a href="/article.php?id=<?= (int)$a['id'] ?>" class="<?= ui('card') ?> block p-4">
-          <div class="font-semibold text-ms"><?= hl($a['title'], $q) ?></div>
+          <div class="font-semibold text-ms"><?= hl($a['title'], $q) ?> <?= status_chip($a['content_status'] ?? 'full') ?></div>
           <?php if (!empty($a['snip'])): ?><div class="mt-1 text-sm text-black"><?= hl($a['snip'], $q) ?>…</div><?php endif; ?>
           <div class="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
             <span class="<?= ui('chip') ?>"><?= e($a['source_name']) ?></span>
@@ -170,6 +170,13 @@ function active_admin_count(int $excludeId = 0): int
 function validate_password(string $p): ?string
 {
     return mb_strlen($p) < 8 ? 'Password must be at least 8 characters.' : null;
+}
+
+function status_chip(string $status): string
+{
+    $m = ['pending' => ['Full text pending', 'bg-white text-black'], 'partial' => ['Incomplete', 'bg-red-50 text-red-900 border-red-700'],
+          'title_only' => ['Title only', 'bg-red-50 text-red-900 border-red-700']];
+    return isset($m[$status]) ? '<span class="' . ui('chip') . ' ' . $m[$status][1] . '">' . e(t($m[$status][0])) . '</span>' : '';
 }
 
 function until(?string $utc): string
@@ -200,6 +207,6 @@ function src_actions(array $s, string $back = 'list'): void
 
 function source_article_row(array $a): string
 {
-    return '<li class="px-4 py-3 hover:bg-ms-light/60"><a class="' . ui('link') . '" href="/article.php?id=' . (int)$a['id'] . '">' . e($a['title']) . '</a>'
+    return '<li class="px-4 py-3 hover:bg-ms-light/60"><a class="' . ui('link') . '" href="/article.php?id=' . (int)$a['id'] . '">' . e($a['title']) . '</a> ' . status_chip($a['content_status'] ?? 'full')
         . '<div class="mt-0.5 text-xs font-semibold">' . e(fmt_dt($a['published_at'])) . '</div></li>';
 }

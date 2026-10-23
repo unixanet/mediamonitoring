@@ -23,7 +23,19 @@ if (!$a) {
     <?php if ($a['category']): ?><span class="<?= ui('chip') ?>"><?= e($a['category']) ?></span><?php endif; ?>
     <span class="<?= ui('chip') ?>"><?= e(t('Published')) ?>: <?= e(fmt_dt($a['published_at'])) ?></span>
     <span class="<?= ui('chip') ?>"><?= e(t('Downloaded')) ?>: <?= e(fmt_dt($a['fetched_at'])) ?></span>
+    <?= status_chip($a['content_status']) ?>
   </div>
+  <?php if ($a['content_status'] !== 'full'): ?>
+    <div class="mt-4 rounded-xl border border-red-700 bg-red-50 px-4 py-3 text-sm font-semibold text-red-900">
+      <?= e(t('Only the title and a short description were saved.')) ?>
+      <?php if ($a['fail_reason']): ?><div class="font-medium"><?= e(t('Reason')) ?>: <?= e($a['fail_reason']) ?> (<?= (int)$a['fetch_attempts'] ?> <?= e(t('attempts')) ?>)</div><?php endif; ?>
+      <?php if ($a['content_status'] === 'pending' && $a['next_retry_at']): ?><div class="font-medium"><?= e(t('Next attempt')) ?>: <?= e(until($a['next_retry_at'])) ?></div><?php endif; ?>
+      <?php if (can('sources.view')): ?>
+      <form method="post" action="/article_action.php" class="mt-2"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+        <button name="act" value="retry" class="<?= ui('btn') ?> !py-1.5"><?= e(t('Retry full text now')) ?></button></form>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
   <?php if ($a['image_url']): ?><img src="<?= e($a['image_url']) ?>" alt="" class="mt-5 max-h-96 rounded-xl border border-black" loading="lazy" referrerpolicy="no-referrer"><?php endif; ?>
   <div class="mt-5 whitespace-pre-line leading-relaxed"><?= e($a['content']) ?></div>
   <a href="<?= e($a['url']) ?>" target="_blank" rel="noopener noreferrer" class="<?= ui('btn') ?> mt-6"><?= e(t('Open original')) ?> ↗</a>

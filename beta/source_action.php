@@ -30,6 +30,12 @@ switch ($act) {
         flash_set($type, $msg);
         $back = '/source.php?id=' . $id;
         break;
+    case 'retry':
+        $n = ft_reset_source(cdb(), $id);
+        $ft = ft_process_source(cdb(), $id, 20);
+        flash_set('ok', sprintf('%d articles queued for another full-text attempt. Now: %d complete, %d still failing%s.', $n, $ft['full'], $ft['failed'] + $ft['partial'], $ft['last_error'] ? ' (' . $ft['last_error'] . ')' : ''));
+        $back = '/source.php?id=' . $id;
+        break;
     case 'pause':
         cdb()->query("UPDATE sources SET is_active = 0 WHERE id = $id");
         flash_set('ok', 'Source paused.');
@@ -49,6 +55,7 @@ switch ($act) {
             }
         } while ($ids);
         cdb()->query("DELETE FROM crawl_log WHERE source_id = $id");
+        cdb()->query("DELETE FROM url_queue WHERE source_id = $id");
         cdb()->query("DELETE FROM sources WHERE id = $id");
         flash_set('ok', 'Source and its articles deleted.');
         $back = '/sources.php';

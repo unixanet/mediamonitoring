@@ -40,22 +40,39 @@ while (true) {
         }
 
         $due = [];
-        $r = $db->query("SELECT * FROM sources WHERE is_active = 1 AND type = 'rss' AND (next_check_at IS NULL OR next_check_at <= NOW())
+        $r = $db->query("SELECT * FROM sources WHERE is_active = 1 AND type IN ('rss','sitemap') AND (next_check_at IS NULL OR next_check_at <= NOW())
             ORDER BY next_check_at LIMIT " . BATCH);
         while ($r && ($x = $r->fetch_assoc())) {
             $due[] = $x;
         }
-        if (!$due) {
-            sleep(1);
-        } else {
+        if ($due) {
             $ids = implode(',', array_map(fn($s) => (int)$s['id'], $due));
             $db->query("UPDATE sources SET next_check_at = NOW() + INTERVAL 90 SECOND WHERE id IN ($ids)");   // занять
             $t = microtime(true);
-            $s = crawl_run_batch($db, $due, MAX_PARALLEL);
+            $s = crawl_run_batch($db, array_values(array_filter($due, fn($d) => $d['type'] === 'rss')), MAX_PARALLEL);
+            foreach ($due as $d) {
+                if ($d['type'] === 'sitemap') {
+                    $sr = crawl_sitemap_source($db, $d, false);
+                    $s['sources']++;
+                    $s['new'] += $sr['queued'] ?? 0;
+                    $s['errors'] += $sr['ok'] ? 0 : 1;
+                }
+            }
             $ms = (int)((microtime(true) - $t) * 1000);
-            $db->query('UPDATE crawler_status SET heartbeat_at = NOW(), last_cycle_ms = ' . $ms . ' WHERE id = 1');
-            $lastBeat = time();
-            say("cycle: {$s['sources']} sources, {$s['new']} new articles, {$s['errors']} errors, {$ms} ms");
+            say("cycle: {$s['sources']} sources, {$s['new']} new, {$s['errors']} errors, {$ms} ms");
+        }
+
+        // полный текст: статьи, ждущие страницу, и очередь sitemap
+        $jobs = ft_collect_jobs($db, 30);
+        if ($jobs) {
+            $t = microtime(true);
+            $f = ft_run_jobs($db, $jobs, 8, 2);
+            say("fulltext: {$f['full']} complete, {$f['failed']} failed, {$f['partial']} gave up, {$f['inserted']} from sitemap, " . (int)((microtime(true) - $t) * 1000) . ' ms');
+        }
+        $db->query('UPDATE crawler_status SET heartbeat_at = NOW() WHERE id = 1');
+        $lastBeat = time();
+        if (!$due && !$jobs) {
+            sleep(1);
         }
 
         if (time() - $lastPurge > 3600) {

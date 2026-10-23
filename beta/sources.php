@@ -7,7 +7,7 @@ $st = sort_state(['name' => 's.name', 'category' => 'c.name', 'articles' => 's.a
     'last_check' => 's.last_checked_at', 'status' => 's.is_active'], 'name', 'asc');
 $rows = [];
 $r = cdb()->query('SELECT s.id, s.name, s.type, s.feed_url, s.is_active, s.articles_count, s.last_article_at, s.last_checked_at,
-    s.consecutive_errors, s.last_error, c.name AS category FROM sources s LEFT JOIN categories c ON c.id = s.category_id
+    s.consecutive_errors, s.last_error, s.unfinished_count, c.name AS category FROM sources s LEFT JOIN categories c ON c.id = s.category_id
     ORDER BY ' . $st['sql'] . ', s.id LIMIT 1000');
 while ($r && ($x = $r->fetch_assoc())) {
     $rows[] = $x;
@@ -48,7 +48,7 @@ if (!$rows): ?>
             <?php if ($s['consecutive_errors'] > 0 && $s['last_error']): ?><div class="text-xs font-semibold text-red-800"><?= e(mb_strimwidth($s['last_error'], 0, 80, '…')) ?></div><?php endif; ?>
           </td>
           <td class="<?= ui('td') ?> font-medium"><?= $s['category'] ? e($s['category']) : '—' ?></td>
-          <td class="<?= ui('td') ?> font-bold"><?= number_format((int)$s['articles_count']) ?></td>
+          <td class="<?= ui('td') ?> font-bold"><?= number_format((int)$s['articles_count']) ?><?php if ($s['unfinished_count'] > 0): ?><a href="/articles.php?source=<?= (int)$s['id'] ?>&status=unfinished" class="block text-xs font-bold text-red-800 hover:underline"><?= (int)$s['unfinished_count'] ?> <?= e(t('incomplete')) ?></a><?php endif; ?></td>
           <td class="<?= ui('td') ?> font-medium whitespace-nowrap" title="<?= e(fmt_dt($s['last_article_at'])) ?>"><?= e(ago($s['last_article_at'])) ?></td>
           <td class="<?= ui('td') ?> font-medium whitespace-nowrap" title="<?= e(fmt_dt($s['last_checked_at'])) ?>"><?= e(ago($s['last_checked_at'])) ?></td>
           <td class="<?= ui('td') ?>"><span class="<?= ui('chip') ?> <?= $b[1] ?>"><?= e(t($b[0])) ?></span></td>
@@ -67,7 +67,7 @@ if (!$rows): ?>
           <span class="<?= ui('chip') ?> shrink-0 <?= $b[1] ?>"><?= e(t($b[0])) ?></span>
         </div>
         <div class="mt-3 grid grid-cols-3 gap-2 text-center">
-          <div class="rounded-lg border border-black/10 bg-ms-light py-2"><div class="font-bold"><?= number_format((int)$s['articles_count']) ?></div><div class="text-xs font-semibold"><?= e(t('Articles')) ?></div></div>
+          <div class="rounded-lg border border-black/10 bg-ms-light py-2"><div class="font-bold"><?= number_format((int)$s['articles_count']) ?></div><div class="text-xs font-semibold"><?= e(t('Articles')) ?><?= $s['unfinished_count'] > 0 ? ' · <span class="text-red-800">' . (int)$s['unfinished_count'] . ' ' . e(t('incomplete')) . '</span>' : '' ?></div></div>
           <div class="rounded-lg border border-black/10 bg-ms-light py-2"><div class="text-sm font-bold"><?= e(ago($s['last_article_at'])) ?></div><div class="text-xs font-semibold"><?= e(t('Last article')) ?></div></div>
           <div class="rounded-lg border border-black/10 bg-ms-light py-2"><div class="text-sm font-bold"><?= e(ago($s['last_checked_at'])) ?></div><div class="text-xs font-semibold"><?= e(t('Last check')) ?></div></div>
         </div>

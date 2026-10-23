@@ -8,7 +8,9 @@ $intervals = [60 => '1 minute', 120 => '2 minutes', 180 => '3 minutes', 300 => '
 $dedupModes = ['url' => 'By article URL', 'guid' => 'By feed GUID', 'title' => 'By title', 'title_date' => 'By title + publication day', 'content' => 'By article text'];
 
 $s = ['name' => '', 'type' => 'rss', 'feed_url' => '', 'download_mode' => 'text', 'dedup_by' => 'url', 'category_id' => null,
-      'start_mode' => 'all', 'start_date' => '', 'check_interval_sec' => 120, 'is_active' => 1];
+      'start_mode' => 'all', 'start_date' => '', 'check_interval_sec' => 120, 'is_active' => 1,
+      'fetch_profile' => 'browser', 'fetch_full_text' => 1];
+$xs = ['urls_extra' => '', 'probe_next' => 0, 'map_include' => '', 'url_include' => '', 'url_exclude' => '', 'sel_title' => '', 'sel_body' => ''];
 
 if ($id) {
     $r = cdb()->query("SELECT * FROM sources WHERE id = $id LIMIT 1");
@@ -19,21 +21,38 @@ if ($id) {
         exit;
     }
     $s = array_merge($s, $row);
+    $saved = json_decode($row['extra'] ?? '', true) ?: [];
+    $xs = array_merge($xs, $saved, ['urls_extra' => implode("\n", (array)($saved['urls_extra'] ?? []))]);
     $s['start_mode'] = $row['min_published_at'] ? 'date' : 'all';
     $s['start_date'] = $row['min_published_at'] ? substr(utc_to_ui_input($row['min_published_at']), 0, 10) : '';
 }
 
 $cats = [];
 $r = cdb()->query('SELECT id, name FROM categories ORDER BY name LIMIT 1000');
-while ($r && ($x = $r->fetch_assoc())) {
-    $cats[(int)$x['id']] = $x['name'];
+while ($r && ($row2 = $r->fetch_assoc())) {
+    $cats[(int)$row2['id']] = $row2['name'];
 }
 
 $errors = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $s['name'] = trim((string)($_POST['name'] ?? ''));
     $s['feed_url'] = trim((string)($_POST['feed_url'] ?? ''));
-    $s['type'] = in_array($_POST['type'] ?? '', ['rss', 'html', 'social'], true) ? $_POST['type'] : 'rss';
+    $s['type'] = in_array($_POST['type'] ?? '', ['rss', 'sitemap', 'html', 'social'], true) ? $_POST['type'] : 'rss';
+    $s['fetch_profile'] = ($_POST['fetch_profile'] ?? '') === 'bot' ? 'bot' : 'browser';
+    $s['fetch_full_text'] = isset($_POST['fetch_full_text']) ? 1 : 0;
+    $xs = ['urls_extra' => trim((string)($_POST['urls_extra'] ?? '')), 'probe_next' => isset($_POST['probe_next']) ? 1 : 0,
+          'map_include' => trim((string)($_POST['map_include'] ?? '')), 'url_include' => trim((string)($_POST['url_include'] ?? '')),
+          'url_exclude' => trim((string)($_POST['url_exclude'] ?? '')), 'sel_title' => trim((string)($_POST['sel_title'] ?? '')),
+          'sel_body' => trim((string)($_POST['sel_body'] ?? ''))];
+    $extraArr = $xs;
+    $extraArr['urls_extra'] = array_values(array_filter(array_map('trim', preg_split('/\R/', $xs['urls_extra']))));
+    foreach ($extraArr['urls_extra'] as $eu) {
+        if (!filter_var($eu, FILTER_VALIDATE_URL) || !preg_match('#^https?://#i', $eu)) $errors[] = 'Additional sitemap URLs must be valid http(s) links.';
+    }
+    foreach (['sel_title', 'sel_body'] as $sk) {
+        if ($xs[$sk] !== '' && ft_css_to_xpath($xs[$sk]) === null) $errors[] = 'Selector not supported (use tag, #id, .class and spaces): ' . $xs[$sk];
+    }
+    $extraJson = json_encode($extraArr, JSON_UNESCAPED_UNICODE);
     $s['download_mode'] = ($_POST['download_mode'] ?? '') === 'text_photo' ? 'text_photo' : 'text';
     $s['dedup_by'] = isset($dedupModes[$_POST['dedup_by'] ?? '']) ? $_POST['dedup_by'] : 'url';
     $s['check_interval_sec'] = isset($intervals[(int)($_POST['check_interval_sec'] ?? 0)]) ? (int)$_POST['check_interval_sec'] : 120;
@@ -74,14 +93,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cid = $s['category_id'];
         if ($id) {
             $q = cdb()->prepare('UPDATE sources SET name=?, type=?, feed_url=?, feed_url_hash=?, download_mode=?, dedup_by=?,
-                min_published_at=?, check_interval_sec=?, is_active=?, category_id=? WHERE id=?');
-            $q->bind_param('sssssssiiii', $s['name'], $s['type'], $s['feed_url'], $hash, $s['download_mode'], $s['dedup_by'],
-                $minUtc, $s['check_interval_sec'], $s['is_active'], $cid, $id);
+                min_published_at=?, check_interval_sec=?, is_active=?, category_id=?, fetch_profile=?, fetch_full_text=?, extra=? WHERE id=?');
+            $q->bind_param('sssssssiiisisi', $s['name'], $s['type'], $s['feed_url'], $hash, $s['download_mode'], $s['dedup_by'],
+                $minUtc, $s['check_interval_sec'], $s['is_active'], $cid, $s['fetch_profile'], $s['fetch_full_text'], $extraJson, $id);
         } else {
             $q = cdb()->prepare('INSERT INTO sources (name, type, feed_url, feed_url_hash, download_mode, dedup_by,
-                min_published_at, check_interval_sec, is_active, category_id, next_check_at) VALUES (?,?,?,?,?,?,?,?,?,?,NOW())');
-            $q->bind_param('sssssssiii', $s['name'], $s['type'], $s['feed_url'], $hash, $s['download_mode'], $s['dedup_by'],
-                $minUtc, $s['check_interval_sec'], $s['is_active'], $cid);
+                min_published_at, check_interval_sec, is_active, category_id, fetch_profile, fetch_full_text, extra, next_check_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())');
+            $q->bind_param('sssssssiiisis', $s['name'], $s['type'], $s['feed_url'], $hash, $s['download_mode'], $s['dedup_by'],
+                $minUtc, $s['check_interval_sec'], $s['is_active'], $cid, $s['fetch_profile'], $s['fetch_full_text'], $extraJson);
         }
         if ($q->execute()) {
             $sid = $id ?: (int)cdb()->insert_id;
@@ -119,7 +138,7 @@ if ($errors): ?>
     <div>
       <label class="<?= ui('lbl') ?>" for="type"><?= e(t('Type')) ?></label>
       <select id="type" name="type" class="<?= ui('inp') ?>">
-        <?php foreach (['rss' => 'RSS', 'html' => 'HTML (not supported yet)', 'social' => 'Social (not supported yet)'] as $v => $l): ?>
+        <?php foreach (['rss' => 'RSS', 'sitemap' => 'Sitemap', 'html' => 'HTML (not supported yet)', 'social' => 'Social (not supported yet)'] as $v => $l): ?>
           <option value="<?= $v ?>" <?= $s['type'] === $v ? 'selected' : '' ?>><?= $l ?></option>
         <?php endforeach; ?>
       </select>
@@ -127,7 +146,7 @@ if ($errors): ?>
   </div>
 
   <div>
-    <label class="<?= ui('lbl') ?>" for="feed_url"><?= e(t('Feed URL')) ?></label>
+    <label class="<?= ui('lbl') ?>" for="feed_url"><span id="urlLabel"><?= e(t('Feed URL')) ?></span></label>
     <input id="feed_url" name="feed_url" type="url" required maxlength="1024" placeholder="https://news.am/rss" value="<?= e($s['feed_url']) ?>" class="<?= ui('inp') ?>">
   </div>
 
@@ -148,6 +167,47 @@ if ($errors): ?>
     </div>
     <?php endif; ?>
   </div>
+
+  <div id="smBox" class="hidden rounded-xl border border-black bg-ms-light/40 p-4 space-y-4">
+    <div class="font-bold"><?= e(t('Sitemap settings')) ?></div>
+    <p class="text-sm font-medium"><?= e(t('Use a sitemap index (sitemap_index.xml) or a direct sitemap (post-sitemap89.xml). The crawler reads the newest sitemaps, finds new article URLs and downloads each article page.')) ?></p>
+    <div>
+      <label class="<?= ui('lbl') ?>" for="urls_extra"><?= e(t('More sitemap URLs (one per line, optional)')) ?></label>
+      <textarea id="urls_extra" name="urls_extra" rows="2" class="<?= ui('inp') ?>"><?= e($xs['urls_extra']) ?></textarea>
+    </div>
+    <label class="flex items-center gap-3 rounded-lg border border-black bg-white px-4 py-2.5 text-sm font-semibold cursor-pointer">
+      <input type="checkbox" name="probe_next" value="1" <?= $xs['probe_next'] ? 'checked' : '' ?> class="h-4 w-4 accent-black">
+      <?= e(t('Probe the next number when there is nothing new (post-sitemap89.xml → post-sitemap90.xml)')) ?>
+    </label>
+    <div class="grid gap-4 sm:grid-cols-3">
+      <div><label class="<?= ui('lbl') ?>"><?= e(t('Only sitemaps containing')) ?></label><input name="map_include" value="<?= e($xs['map_include']) ?>" placeholder="post-sitemap" class="<?= ui('inp') ?>"></div>
+      <div><label class="<?= ui('lbl') ?>"><?= e(t('Only URLs containing')) ?></label><input name="url_include" value="<?= e($xs['url_include']) ?>" placeholder="/news/" class="<?= ui('inp') ?>"></div>
+      <div><label class="<?= ui('lbl') ?>"><?= e(t('Skip URLs containing')) ?></label><input name="url_exclude" value="<?= e($xs['url_exclude']) ?>" placeholder="/video/, /photo/" class="<?= ui('inp') ?>"></div>
+    </div>
+  </div>
+
+  <div class="grid gap-5 sm:grid-cols-2">
+    <div>
+      <label class="<?= ui('lbl') ?>" for="fetch_profile"><?= e(t('Request headers')) ?></label>
+      <select id="fetch_profile" name="fetch_profile" class="<?= ui('inp') ?>">
+        <option value="browser" <?= $s['fetch_profile'] === 'browser' ? 'selected' : '' ?>><?= e(t('Browser-like (recommended)')) ?></option>
+        <option value="bot" <?= $s['fetch_profile'] === 'bot' ? 'selected' : '' ?>><?= e(t('Honest bot')) ?></option>
+      </select>
+    </div>
+    <label class="flex items-center gap-3 self-start sm:mt-7 rounded-lg border border-black px-4 py-2.5 text-sm font-semibold cursor-pointer">
+      <input type="checkbox" name="fetch_full_text" value="1" <?= $s['fetch_full_text'] ? 'checked' : '' ?> class="h-4 w-4 accent-black">
+      <?= e(t('Open article pages to get the full text')) ?>
+    </label>
+  </div>
+
+  <details class="rounded-xl border border-black/30 px-4 py-3">
+    <summary class="cursor-pointer font-semibold"><?= e(t('Advanced: article page selectors (optional)')) ?></summary>
+    <p class="mt-2 text-sm font-medium"><?= e(t('Leave empty: title, date and text are detected automatically. If a site is detected wrongly, set CSS selectors (tag, #id, .class, spaces).')) ?></p>
+    <div class="mt-3 grid gap-4 sm:grid-cols-2">
+      <div><label class="<?= ui('lbl') ?>"><?= e(t('Title selector')) ?></label><input name="sel_title" value="<?= e($xs['sel_title']) ?>" placeholder="h1.article-title" class="<?= ui('inp') ?>"></div>
+      <div><label class="<?= ui('lbl') ?>"><?= e(t('Text selector')) ?></label><input name="sel_body" value="<?= e($xs['sel_body']) ?>" placeholder="div.article-body" class="<?= ui('inp') ?>"></div>
+    </div>
+  </details>
 
   <div>
     <div class="<?= ui('lbl') ?>"><?= e(t('What to download')) ?></div>
@@ -208,6 +268,13 @@ if ($errors): ?>
   </div>
 </form>
 <script>
+const typeSel = document.getElementById('type');
+function syncType() {
+  const sm = typeSel.value === 'sitemap';
+  document.getElementById('smBox').classList.toggle('hidden', !sm);
+  document.getElementById('urlLabel').textContent = sm ? '<?= e(t('Sitemap URL')) ?>' : '<?= e(t('Feed URL')) ?>';
+}
+typeSel.onchange = syncType; syncType();
 document.querySelectorAll('input[name=start_mode]').forEach(r => r.onchange = () =>
   document.getElementById('dateWrap').classList.toggle('hidden', document.querySelector('input[name=start_mode]:checked').value !== 'date'));
 </script>
