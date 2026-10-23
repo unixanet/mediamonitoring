@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: /profile.php');
                 exit;
             }
-            $errors[] = $q->errno === 1062 ? 'This username is already taken.' : 'Database error, please try again.';
+            $errors[] = $q->errno === 1062 ? 'This username is already taken.' : 'Database error: ' . $q->errno . ' ' . $q->error;
         }
     }
 }

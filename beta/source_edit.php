@@ -114,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: ' . (can('sources.view') ? '/source.php?id=' . $sid : '/'));
             exit;
         }
-        $errors[] = $q->errno === 1062 ? 'A source with this name or feed URL already exists.' : 'Database error, please try again.';
+        $errors[] = $q->errno === 1062 ? 'A source with this name or feed URL already exists.' : 'Database error: ' . $q->errno . ' ' . $q->error;
     }
 }
 

@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
             if ($q->execute()) {
                 flash_set('ok', $isAdd ? 'Category added.' : 'Category renamed.');
             } else {
-                flash_set('err', $q->errno === 1062 ? 'This category already exists.' : 'Database error, please try again.');
+                flash_set('err', $q->errno === 1062 ? 'This category already exists.' : 'Database error: ' . $q->errno . ' ' . $q->error);
             }
         }
     } elseif (isset($_POST['delete'])) {
