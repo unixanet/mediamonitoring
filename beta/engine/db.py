@@ -10,8 +10,9 @@ class DB:
 
     async def init(self):
         c = config.DB
+        conn = {"unix_socket": c["socket"]} if c.get("socket") else {"host": c["host"]}
         self.pool = await aiomysql.create_pool(
-            host=c["host"], user=c["user"], password=c["password"], db=c["name"], charset="utf8mb4",
+            **conn, user=c["user"], password=c["password"], db=c["name"], charset="utf8mb4",
             autocommit=True, minsize=2, maxsize=24, init_command="SET time_zone = '+00:00'")
 
     async def close(self):
