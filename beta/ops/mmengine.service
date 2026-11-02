@@ -1,12 +1,18 @@
 [Unit]
 Description=Media Monitoring engine (Python)
 After=network-online.target mysql.service
+StartLimitIntervalSec=0
 [Service]
 WorkingDirectory=/var/www/beta_mediamo_usr/data/www/beta.mediamonitoring.am
 Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 ExecStart=/usr/bin/xvfb-run -a /usr/bin/python3 -m engine run
+# Самолечение: падение, зависание и недоступность БД приводят к перезапуску без участия человека
 Restart=always
 RestartSec=5
+NotifyAccess=all
+WatchdogSec=120
+TimeoutStopSec=30
+KillMode=control-group
 Nice=10
 MemoryMax=4G
 [Install]

@@ -3,6 +3,7 @@ import asyncio
 import logging
 import os
 import signal
+import socket
 
 from aiohttp import web
 
@@ -66,12 +67,26 @@ async def page_loop(e: Engine):
             await asyncio.sleep(5)
 
 
+def sd_notify(msg: str) -> None:
+    """Сообщить systemd, что движок жив (watchdog). Без systemd ничего не делает."""
+    addr = os.environ.get("NOTIFY_SOCKET")
+    if not addr:
+        return
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sk:
+            sk.connect("\0" + addr[1:] if addr[0] == "@" else addr)
+            sk.sendall(msg.encode())
+    except OSError:
+        pass
+
+
 async def maint_loop(e: Engine):
     last = {"stats": 0, "journal": 0, "purge": 0}
     loop = asyncio.get_event_loop()
     while True:
         try:
             await e.heartbeat()
+            sd_notify("WATCHDOG=1")          # пульс записан в БД: движок и БД живы. Нет пульса 2 минуты: systemd перезапустит движок
             now = loop.time()
             if now - last["journal"] >= 60:
                 last["journal"] = now
