@@ -83,6 +83,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!csrf_ok()) $errors[] = 'Session expired, please reload the page.';
+    if ($s['name'] === '') {
+        $hn = parse_url($s['feed_url'], PHP_URL_HOST) ?: tg_username($s['feed_url']);
+        $s['name'] = preg_replace('/^www\./', '', (string)$hn);
+    }
     if ($s['name'] === '' || mb_strlen($s['name']) > 190) $errors[] = 'Source name is required (up to 190 characters).';
     if ($s['type'] === 'sitemap') {
         $s['fetch_full_text'] = 1;       // карта даёт только ссылки: текст берём со страниц
@@ -104,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $s['fetch_full_text'] = 1;
     } elseif ($s['type'] === 'facebook') {
         if (preg_match('#^(https?://)?([\w.-]+\.)?(facebook|fb)\.com#i', $s['feed_url']) || !preg_match('#^https?://#i', $s['feed_url'])) {
-            $errors[] = 'Facebook cannot be read directly. Create a feed for the public page or group in rss.app (or a similar service) and paste that RSS URL here.';
+            $errors[] = 'Facebook cannot be read directly. Paste the address of a feed for the public page or group.';
         }
         $s['fetch_full_text'] = 0;     // страницы Facebook закрыты логином
     }
@@ -168,8 +172,8 @@ $types = ['rss' => ['RSS feed', 'Any news site feed'], 'sitemap' => ['Sitemap', 
 
   <!-- 1. Source -->
   <section class="<?= $card ?> space-y-5 min-w-0 xl:col-start-1">
-    <h2 class="text-[15px] font-semibold"><?= e(t('1. Where to read from')) ?></h2>
-    <div>
+    <h2 class="text-[15px] font-semibold"><?= e(t($id ? '1. Where to read from' : 'New source')) ?></h2>
+    <div class="hidden">
       <div class="<?= $lbl ?>"><?= e(t('Type')) ?></div>
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
         <?php foreach ($types as $v => [$l, $sub]): ?>
@@ -188,12 +192,12 @@ $types = ['rss' => ['RSS feed', 'Any news site feed'], 'sitemap' => ['Sitemap', 
         <span id="urlOk" class="hidden absolute right-3.5 top-1/2 -translate-y-1/2 text-ms"><svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></span>
       </div>
       <div id="tgBox" class="hidden mt-2 text-[13px] text-muted"><?= e(t('Only public channels work: https://t.me/s/<username> must show the posts in a browser. Posts with only a photo or video (no text) are skipped. The text of each post is saved in full.')) ?></div>
-      <div id="fbBox" class="hidden mt-2 rounded-xl bg-ms-light px-3.5 py-2.5 text-[13px] text-[#0B4F94]"><?= e(t('Facebook does not let servers read pages directly. Create a feed for the public page or group in rss.app (or a similar service), paste its RSS URL here, and the crawler will treat it like any feed.')) ?></div>
+      <div id="fbBox" class="hidden mt-2 rounded-xl bg-ms-light px-3.5 py-2.5 text-[13px] text-[#0B4F94]"><?= e(t('Facebook does not let servers read pages directly. Paste the feed address of the public page or group, the crawler treats it like any other feed.')) ?></div>
     </div>
     <div class="grid gap-5 sm:grid-cols-2">
       <div>
         <label class="<?= $lbl ?>" for="name"><?= e(t('Source name')) ?></label>
-        <input id="name" name="name" required maxlength="190" placeholder="News.am" value="<?= e($s['name']) ?>" class="<?= $inp ?>">
+        <input id="name" name="name" maxlength="190" placeholder="News.am" value="<?= e($s['name']) ?>" class="<?= $inp ?>">
       </div>
       <div>
         <label class="<?= $lbl ?>" for="category_id"><?= e(t('Category')) ?></label>
@@ -235,6 +239,9 @@ $types = ['rss' => ['RSS feed', 'Any news site feed'], 'sitemap' => ['Sitemap', 
     </section>
   </aside>
 
+  <details class="xl:col-start-1 min-w-0 group"<?= $id ? ' open' : '' ?>>
+    <summary class="cursor-pointer list-none flex items-center gap-2 text-sm font-semibold text-[#0B4F94] mb-5 select-none"><span><?= e(t('More settings')) ?></span><span class="text-xs font-normal text-muted"><?= e(t('Optional. The defaults are fine.')) ?></span></summary>
+    <div class="grid gap-5 min-w-0">
   <!-- Список ссылок на странице -->
   <section id="lsBox" class="<?= $card ?> hidden space-y-4 min-w-0 xl:col-start-1">
     <h2 class="text-[15px] font-semibold"><?= e(t('Page list rule')) ?></h2>
@@ -348,9 +355,12 @@ $types = ['rss' => ['RSS feed', 'Any news site feed'], 'sitemap' => ['Sitemap', 
     </details>
   </section>
 
+    </div>
+  </details>
+
   <div class="xl:col-start-1 flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
     <a href="<?= can('sources.view') ? '/sources.php' : '/' ?>" class="<?= ui('btn2') ?>"><?= e(t('Cancel')) ?></a>
-    <button id="saveBtn" class="<?= ui('btn') ?> sm:px-8"><?= e(t($id ? 'Save' : 'Save and fetch now')) ?></button>
+    <button id="saveBtn" class="<?= ui('btn') ?> sm:px-8"><?= e(t($id ? 'Save' : 'Add source')) ?></button>
   </div>
 </form>
 
@@ -363,7 +373,7 @@ $types = ['rss' => ['RSS feed', 'Any news site feed'], 'sitemap' => ['Sitemap', 
 const f = document.getElementById('sf'), $ = id => document.getElementById(id);
 const BROWSER_UP = <?= $browserUp ? 'true' : 'false' ?>;
 const L = {listing: ['<?= e(t('Address of the page with the list')) ?>', 'https://site.am/timeline'], rss: ['<?= e(t('Feed URL')) ?>', 'https://news.am/rss'], sitemap: ['<?= e(t('Sitemap URL')) ?>', 'https://site.am/sitemap_index.xml'],
-           telegram: ['<?= e(t('Telegram channel username')) ?>', '@durov  or  https://t.me/durov'], facebook: ['<?= e(t('RSS feed URL of the Facebook page (from rss.app)')) ?>', 'https://rss.app/feeds/xxxx.xml']};
+           telegram: ['<?= e(t('Telegram channel username')) ?>', '@durov  or  https://t.me/durov'], facebook: ['<?= e(t('Feed URL of the Facebook page')) ?>', 'https://example.com/facebook-page-feed.xml']};
 let ctl = null, timer = null, tick = null;
 const curType = () => f.querySelector('input[name=type]:checked').value;
 
