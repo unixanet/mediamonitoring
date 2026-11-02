@@ -1,4 +1,6 @@
 """Пул соединений MySQL (aiomysql). Время везде UTC."""
+import os
+
 import aiomysql
 
 from . import config
@@ -10,7 +12,8 @@ class DB:
 
     async def init(self):
         c = config.DB
-        conn = {"unix_socket": c["socket"]} if c.get("socket") else {"host": c["host"]}
+        sock = c.get("socket") or next((p for p in ("/var/run/mysqld/mysqld.sock", "/run/mysqld/mysqld.sock", "/tmp/mysql.sock") if c["host"] == "localhost" and os.path.exists(p)), None)
+        conn = {"unix_socket": sock} if sock else {"host": c["host"]}
         self.pool = await aiomysql.create_pool(
             **conn, user=c["user"], password=c["password"], db=c["name"], charset="utf8mb4",
             autocommit=True, minsize=2, maxsize=24, init_command="SET time_zone = '+00:00'")
