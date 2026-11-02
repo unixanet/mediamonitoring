@@ -12,8 +12,10 @@ X-Browser-Error (если сам браузер упал или не дожда�
 Проверку Cloudflare ("Just a moment...") сервис ждёт до ~30 секунд и при необходимости кликает по чекбоксу Turnstile.
 """
 import asyncio
+import base64
 import os
 import random
+import re
 import time
 
 from aiohttp import web
@@ -33,6 +35,31 @@ Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
 Object.defineProperty(navigator, 'languages', {get: () => ['hy-AM', 'hy', 'en-US', 'en']});
 window.chrome = window.chrome || {runtime: {}};
 """
+
+
+def to_utf8(raw: bytes, ctype: str) -> bytes:
+    """Сырые байты ответа в чистый UTF-8: кодировка из заголовка, BOM или XML-декларации, иначе UTF-8."""
+    enc = None
+    m = re.search(r"charset=([\w-]+)", ctype or "", re.I)
+    if m:
+        enc = m.group(1)
+    elif raw[:3] == b"\xef\xbb\xbf":
+        enc = "utf-8-sig"
+    else:
+        m = re.match(rb"\s*<\?xml[^>]*encoding=[\"']([\w-]+)[\"']", raw[:200], re.I)
+        if m:
+            enc = m.group(1).decode("ascii", "ignore")
+    try:
+        text = raw.decode(enc or "utf-8", errors="replace")
+    except LookupError:
+        text = raw.decode("utf-8", errors="replace")
+    text = re.sub(r"^(\s*<\?xml[^>]*encoding=[\"'])[\w-]+([\"'])", r"\1UTF-8\2", text, count=1, flags=re.I)
+    return text.encode("utf-8")
+
+
+def with_utf8(ctype: str) -> str:
+    base = re.sub(r";\s*charset=[^;]*", "", ctype or "text/html").strip()
+    return base + "; charset=utf-8"
 
 
 class Browser:
@@ -94,6 +121,18 @@ class Browser:
         if any(t in title for t in CHALLENGE_TITLES) and status in (200, 202, 403, 429, 503):
             return True
         return False
+
+    async def raw_bytes(self, page, url):
+        """Точные байты ответа (Chromium для текстовых типов отдаёт уже расшифрованный текст, из-за чего ломается кодировка)."""
+        try:
+            b64 = await page.evaluate(
+                """async (u) => { const r = await fetch(u, {credentials: 'include', cache: 'no-store'});
+                   const a = new Uint8Array(await r.arrayBuffer()); let s = ''; const k = 0x8000;
+                   for (let i = 0; i < a.length; i += k) s += String.fromCharCode.apply(null, a.subarray(i, i + k));
+                   return btoa(s); }""", url)
+            return base64.b64decode(b64)
+        except Exception:
+            return None
 
     async def human_click_turnstile(self, page):
         try:
@@ -168,13 +207,25 @@ class Browser:
                         self.solved += 1
                         resp = await page.goto(url, wait_until="domcontentloaded", timeout=max(5000, int((deadline - time.time()) * 1000)))
                         challenged = await self.is_challenge(page, resp)
-                body = await resp.body() if resp else b""
+                headers = resp.headers if resp else {}
+                ctype = headers.get("content-type", "text/html")
+                low = ctype.lower()
+                body = b""
+                if resp is not None:
+                    if "html" not in low and ("xml" in low or "json" in low or low.startswith("text/")):
+                        raw = None if challenged else await self.raw_bytes(page, url)
+                        body = to_utf8(raw, ctype) if raw is not None else await resp.body()
+                        ctype = with_utf8(ctype)
+                    elif "html" in low:
+                        body = await resp.body()          # Playwright уже отдаёт HTML как UTF-8
+                        ctype = with_utf8(ctype)
+                    else:
+                        body = await resp.body()
                 if len(body) > MAX_BODY:
                     body = body[:MAX_BODY]
-                headers = resp.headers if resp else {}
                 return {
                     "status": resp.status if resp else 502,
-                    "ctype": headers.get("content-type", "text/html; charset=utf-8"),
+                    "ctype": ctype,
                     "body": body,
                     "final": page.url,
                     "challenge": challenged,

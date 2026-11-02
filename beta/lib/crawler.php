@@ -78,9 +78,14 @@ function crawl_load_xml(string $body)
     $prev = libxml_use_internal_errors(true);
     $base = LIBXML_NOCDATA | LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_PARSEHUGE;
     $xml = simplexml_load_string($body, 'SimpleXMLElement', $base);
-    if (!$xml) {
+    if (!$xml && preg_match('/^\s*<(\?xml|rss|feed|rdf|urlset|sitemapindex)/i', $body)) {   // восстановление только для похожего на XML
         $clean = preg_replace('/[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}]+/u', '', $body);
-        $xml = simplexml_load_string($clean !== null ? $clean : $body, 'SimpleXMLElement', $base | LIBXML_RECOVER);
+        $dom = new DOMDocument();
+        $dom->recover = true;
+        $dom->strictErrorChecking = false;
+        if (@$dom->loadXML($clean !== null ? $clean : $body, $base)) {
+            $xml = simplexml_import_dom($dom);
+        }
     }
     libxml_clear_errors();
     libxml_use_internal_errors($prev);
