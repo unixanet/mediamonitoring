@@ -38,42 +38,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 page_head('Sign in — Media Monitoring Admin');
 ?>
-<body class="min-h-screen bg-white text-black font-sans antialiased">
+<body class="min-h-screen bg-white text-ink font-sans antialiased">
 <div class="min-h-screen lg:grid lg:grid-cols-2">
-
-  <section class="bg-ms text-white px-6 py-10 sm:px-12 lg:py-0 lg:flex lg:flex-col lg:justify-center relative overflow-hidden">
-    <div class="absolute -right-24 -top-24 h-72 w-72 rounded-full border border-white/40"></div>
-    <div class="absolute -right-10 -top-10 h-48 w-48 rounded-full border border-white/40"></div>
-    <div class="absolute -left-20 -bottom-20 h-64 w-64 rounded-full border border-white/40"></div>
+  <section class="bg-ms text-white px-6 py-10 sm:px-14 lg:py-0 lg:flex lg:flex-col lg:justify-center relative overflow-hidden">
+    <div class="absolute -right-24 -top-24 h-72 w-72 rounded-full border border-white/30"></div>
+    <div class="absolute -right-8 -top-8 h-44 w-44 rounded-full border border-white/30"></div>
+    <div class="absolute -left-24 -bottom-24 h-72 w-72 rounded-full border border-white/30"></div>
     <div class="relative flex items-center gap-3">
-      <div class="h-12 w-12 rounded-xl bg-white text-ms border border-black shadow-[0_3px_0_0_#000] flex items-center justify-center text-2xl font-bold">M</div>
-      <span class="text-2xl font-bold">Media Monitoring</span>
+      <div class="h-11 w-11 rounded-[11px] bg-white text-ms flex items-center justify-center text-xl font-bold">M</div>
+      <span class="text-xl font-bold">Media Monitoring</span>
     </div>
-    <h2 class="relative mt-8 lg:mt-14 text-3xl sm:text-4xl font-bold leading-tight max-w-md">Every Armenian news source. One place.</h2>
-    <p class="relative mt-4 text-lg font-medium text-white max-w-md">Manage sources, users and the crawler.</p>
+    <h2 class="relative mt-8 lg:mt-16 text-3xl sm:text-[40px] font-bold leading-tight tracking-tight max-w-md">Every Armenian news source. One place.</h2>
+    <p class="relative mt-4 text-lg text-white/95 max-w-md">Sources, articles, alerts and the crawler in one console.</p>
   </section>
-
-  <main class="flex items-center justify-center px-5 py-10 sm:px-12 bg-ms-light/50">
+  <main class="flex items-center justify-center px-5 py-10 sm:px-12 bg-surface">
     <div class="w-full max-w-md <?= ui('card') ?> p-6 sm:p-9">
-      <h1 class="text-3xl font-bold"><?= e(t('Sign in')) ?></h1>
-      <p class="mt-1 font-medium text-ms-dark"><?= e(t('Welcome back. Enter your details.')) ?></p>
-
+      <h1 class="text-[28px] font-bold tracking-tight"><?= e(t('Sign in')) ?></h1>
+      <p class="mt-1 text-muted"><?= e(t('Welcome back. Enter your details.')) ?></p>
       <?php if ($error): ?>
-        <div class="mt-5 rounded-xl border border-red-700 bg-red-50 text-red-900 text-sm font-semibold px-4 py-3"><?= e(t($error)) ?></div>
+        <div class="mt-5 rounded-xl border border-[#E2A9AE] bg-dangerbg text-danger text-sm font-medium px-4 py-3"><?= e(t($error)) ?></div>
       <?php endif; ?>
-
       <form method="post" class="mt-6 space-y-5" autocomplete="on">
         <input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
         <div>
           <label for="username" class="<?= ui('lbl') ?>"><?= e(t('Username')) ?></label>
-          <input id="username" name="username" type="text" required autofocus autocomplete="username"
-                 value="<?= e((string)($_POST['username'] ?? '')) ?>" class="<?= ui('inp') ?>">
+          <input id="username" name="username" type="text" required autofocus autocomplete="username" value="<?= e((string)($_POST['username'] ?? '')) ?>" class="<?= ui('inp') ?>">
         </div>
         <div>
           <label for="password" class="<?= ui('lbl') ?>"><?= e(t('Password')) ?></label>
           <input id="password" name="password" type="password" required autocomplete="current-password" class="<?= ui('inp') ?>">
         </div>
-        <button type="submit" class="<?= ui('btn') ?> w-full !py-3 !text-base"><?= e(t('Sign in')) ?></button>
+        <button type="submit" class="<?= ui('btn') ?> w-full !h-11 !text-[15px]"><?= e(t('Sign in')) ?></button>
       </form>
     </div>
   </main>

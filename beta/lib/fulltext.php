@@ -200,7 +200,7 @@ function ft_log(mysqli $db, array $src, string $level, string $event, string $ms
     crawl_log($db, (int)$src['id'], $level, $event, $http, 0, 0, $msg, 'URL: ' . $url);
 }
 
-function ft_handle(mysqli $db, array $job, $ch, stdClass $st, int $errno, array &$stats): void
+function ft_handle(mysqli $db, array &$job, $ch, stdClass $st, int $errno, array &$stats): void
 {
     $src = $job['src'];
     $url = $job['url'];
@@ -208,6 +208,12 @@ function ft_handle(mysqli $db, array $job, $ch, stdClass $st, int $errno, array 
     $kind = $job['kind'];
     $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     $fail = crawl_failure($src, $url, $ch, $st, $errno);
+    if ($fail && ($src['fetch_method'] ?? 'http') === 'auto' && empty($st->via_browser) && crawl_is_block($fail, $errno)) {
+        crawl_mark_browser($db, $src);       // повтор этой же страницы через браузер, попытка не засчитывается
+        $job['src'] = $src;
+        $job['_retry'] = true;
+        return;
+    }
     $ex = null;
     $event = '';
     $reason = '';
@@ -380,6 +386,11 @@ function ft_run_jobs(mysqli $db, array $jobs, int $par = 8, int $perHost = 2): a
                 ft_handle($db, $job, $ch, $st, (int)$info['result'], $stats);
             } catch (Throwable $e) {
                 $stats['last_error'] = $e->getMessage();
+            }
+            if (!empty($job['_retry'])) {
+                unset($job['_retry']);
+                $job['_start'] = microtime(true);
+                $queue[] = $job;
             }
         }
         if ($active) {

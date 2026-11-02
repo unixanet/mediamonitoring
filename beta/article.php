@@ -34,7 +34,7 @@ $back = ($rp && ($rp['host'] ?? '') === explode(':', $_SERVER['HTTP_HOST'] ?? ''
     <?php if ((int)$a['revision'] > 0): ?><span class="<?= ui('chip') ?>"><?= e(t('Edited')) ?> ×<?= (int)$a['revision'] ?> · <?= e(fmt_dt($a['updated_at'])) ?></span><?php endif; ?>
   </div>
   <?php if ($a['content_status'] !== 'full'): ?>
-    <div class="mt-4 rounded-xl border border-red-700 bg-red-50 px-4 py-3 text-sm font-semibold text-red-900">
+    <div class="mt-4 rounded-xl border border-[#E2A9AE] bg-dangerbg px-4 py-3 text-sm font-semibold text-danger">
       <?= e(t('Only the title and a short description were saved.')) ?>
       <?php if ($a['fail_reason']): ?><div class="font-medium"><?= e(t('Reason')) ?>: <?= e($a['fail_reason']) ?> (<?= (int)$a['fetch_attempts'] ?> <?= e(t('attempts')) ?>)</div><?php endif; ?>
       <?php if ($a['content_status'] === 'pending' && $a['next_retry_at']): ?><div class="font-medium"><?= e(t('Next attempt')) ?>: <?= e(until($a['next_retry_at'])) ?></div><?php endif; ?>

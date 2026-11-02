@@ -73,7 +73,7 @@ app_start(t($title), 'users', $user);
 echo '<div class="mb-2"><a href="/users.php" class="' . ui('link') . '">← ' . e(t('Users')) . '</a></div>';
 page_title(t($title));
 if ($errors): ?>
-  <div class="mb-6 max-w-xl rounded-xl border border-red-700 bg-red-50 text-red-900 text-sm font-semibold px-4 py-3">
+  <div class="mb-6 max-w-xl rounded-xl border border-[#E2A9AE] bg-dangerbg text-danger text-sm font-semibold px-4 py-3">
     <?php foreach ($errors as $m): ?><div><?= e(t($m)) ?></div><?php endforeach; ?>
   </div>
 <?php endif; ?>
@@ -94,11 +94,11 @@ if ($errors): ?>
     <label class="<?= ui('lbl') ?>" for="password"><?= e(t($id ? 'New password (leave empty to keep)' : 'Password')) ?></label>
     <input id="password" name="password" type="password" autocomplete="new-password" <?= $id ? '' : 'required' ?> class="<?= ui('inp') ?>">
   </div>
-  <label class="flex items-center gap-3 rounded-lg border border-black px-4 py-2.5 text-sm font-semibold cursor-pointer">
+  <label class="flex items-center gap-3 rounded-[10px] border border-line2 px-4 py-2.5 text-sm font-semibold cursor-pointer">
     <input type="checkbox" name="is_active" value="1" <?= $u['is_active'] ? 'checked' : '' ?> class="h-4 w-4 accent-black">
     <?= e(t('Account is active')) ?>
   </label>
-  <div class="flex flex-col-reverse sm:flex-row gap-3 border-t border-black/10 pt-5">
+  <div class="flex flex-col-reverse sm:flex-row gap-3 border-t border-line pt-5">
     <a href="/users.php" class="<?= ui('btn2') ?>"><?= e(t('Cancel')) ?></a>
     <button class="<?= ui('btn') ?> sm:px-8"><?= e(t('Save')) ?></button>
     <?php if ($id && $id !== $user['id']): ?>

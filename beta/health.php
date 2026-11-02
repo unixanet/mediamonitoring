@@ -6,7 +6,7 @@ $m = engine_metrics(cdb());
 
 function stat_card(string $label, string $value, string $sub = '', string $tone = 'ok'): void
 {
-    $c = $tone === 'bad' ? 'text-red-800' : 'text-ms';
+    $c = $tone === 'bad' ? 'text-danger' : 'text-ms';
     echo '<div class="' . ui('card') . ' p-5"><div class="text-sm font-semibold">' . e($label) . '</div><div class="mt-1 text-3xl font-bold ' . $c . '">' . e($value)
         . '</div>' . ($sub ? '<div class="mt-1 text-xs font-semibold">' . e($sub) . '</div>' : '') . '</div>';
 }
@@ -14,7 +14,7 @@ function meter(string $label, float $pct, string $text): void
 {
     $bad = $pct > 85;
     echo '<div class="mb-4"><div class="flex justify-between text-sm font-semibold"><span>' . e($label) . '</span><span>' . e($text) . '</span></div>'
-        . '<div class="mt-1 h-2.5 rounded-full border border-black bg-white overflow-hidden"><div class="h-full ' . ($bad ? 'bg-red-700' : 'bg-ms') . '" style="width:' . min(100, max(2, round($pct))) . '%"></div></div></div>';
+        . '<div class="mt-1 h-2.5 rounded-full border border-line2 bg-white overflow-hidden"><div class="h-full ' . ($bad ? 'bg-red-700' : 'bg-ms') . '" style="width:' . min(100, max(2, round($pct))) . '%"></div></div></div>';
 }
 
 app_start(t('Engine'), 'health', $user);
@@ -40,7 +40,7 @@ page_title(t('Engine health'), '<a class="' . ui('btn2') . '" href="/health.php"
       <div class="flex items-end gap-1 h-36">
         <?php foreach ($m['hours'] as $h => $n): ?>
           <div class="flex-1 min-w-0 flex flex-col justify-end h-full" title="<?= e($h . ' UTC: ' . $n) ?>">
-            <div class="w-full rounded-t bg-ms border border-black" style="height:<?= max(3, round(100 * $n / $max)) ?>%"></div>
+            <div class="w-full rounded-t bg-ms border border-line2" style="height:<?= max(3, round(100 * $n / $max)) ?>%"></div>
           </div>
         <?php endforeach; ?>
       </div>
@@ -61,25 +61,25 @@ page_title(t('Engine health'), '<a class="' . ui('btn2') . '" href="/health.php"
 
 <div class="grid gap-6 xl:grid-cols-2 mb-6">
   <section class="<?= ui('card') ?> overflow-hidden">
-    <div class="px-5 py-3 bg-ms-light border-b border-black font-bold"><?= e(t('Processes')) ?></div>
+    <div class="px-5 py-3 bg-[#F6F8FC] border-b border-line font-bold"><?= e(t('Processes')) ?></div>
     <?php if (!$m['workers']): ?><div class="p-5 text-sm font-semibold"><?= e(t('No processes have reported yet.')) ?></div><?php endif; ?>
-    <div class="divide-y divide-black/10">
+    <div class="divide-y divide-line">
       <?php foreach ($m['workers'] as $w): ?>
         <div class="px-5 py-3 flex items-center justify-between gap-3">
           <div><div class="font-bold"><?= $w['role'] === 'poller' ? e(t('Feed poller')) : e(t('Full-text worker')) . ' #' . ((int)$w['id'] - 10) ?></div>
             <div class="text-xs font-semibold">PID <?= (int)$w['pid'] ?> · <?= e(t('since')) ?> <?= e(fmt_dt($w['started_at'])) ?> · <?= number_format((int)$w['jobs_done']) ?> <?= e(t('jobs')) ?><?= $w['last_cycle_ms'] !== null ? ' · ' . (int)$w['last_cycle_ms'] . ' ms ' . e(t('last cycle')) : '' ?></div></div>
-          <span class="<?= ui('chip') ?> <?= $w['online'] ? 'bg-ms text-white' : 'bg-red-50 text-red-900 border-red-700' ?>"><?= e(t($w['online'] ? 'Running' : 'Offline')) ?></span>
+          <span class="<?= ui('chip') ?> <?= $w['online'] ? 'bg-ms text-white' : 'bg-dangerbg text-danger' ?>"><?= e(t($w['online'] ? 'Running' : 'Offline')) ?></span>
         </div>
       <?php endforeach; ?>
     </div>
   </section>
 
   <section class="<?= ui('card') ?> overflow-hidden">
-    <div class="px-5 py-3 bg-ms-light border-b border-black font-bold"><?= e(t('Queues')) ?></div>
+    <div class="px-5 py-3 bg-[#F6F8FC] border-b border-line font-bold"><?= e(t('Queues')) ?></div>
     <dl class="p-5 text-sm">
       <?php foreach ([[t('RSS articles waiting for the page'), $m['pending_articles']], [t('Sitemap URLs waiting'), $m['queue_pending']], [t('Sitemap URLs failed for good'), $m['queue_failed']],
                       [t('Incomplete articles (gave up)'), $m['incomplete']], [t('Change journal for Manticore (30 days)'), $m['changes_total']]] as [$k, $v]): ?>
-        <div class="flex justify-between py-1.5 border-b border-black/10 last:border-0"><dt class="font-semibold"><?= e($k) ?></dt><dd class="font-bold"><?= number_format((int)$v) ?></dd></div>
+        <div class="flex justify-between py-1.5 border-b border-line last:border-0"><dt class="font-semibold"><?= e($k) ?></dt><dd class="font-bold"><?= number_format((int)$v) ?></dd></div>
       <?php endforeach; ?>
     </dl>
   </section>
@@ -87,27 +87,27 @@ page_title(t('Engine health'), '<a class="' . ui('btn2') . '" href="/health.php"
 
 <div class="grid gap-6 xl:grid-cols-3">
   <section class="<?= ui('card') ?> overflow-hidden xl:col-span-1">
-    <div class="px-5 py-3 bg-ms-light border-b border-black font-bold"><?= e(t('Silent sources')) ?></div>
+    <div class="px-5 py-3 bg-[#F6F8FC] border-b border-line font-bold"><?= e(t('Silent sources')) ?></div>
     <?php if (!$m['silent']): ?><div class="p-5 text-sm font-semibold"><?= e(t('None. Every source publishes at its usual pace.')) ?></div><?php endif; ?>
-    <div class="divide-y divide-black/10">
+    <div class="divide-y divide-line">
       <?php foreach ($m['silent'] as $x): ?>
-        <a href="/source.php?id=<?= (int)$x['id'] ?>" class="block px-5 py-3 hover:bg-ms-light/60"><div class="font-bold text-red-900"><?= e($x['name']) ?></div>
+        <a href="/source.php?id=<?= (int)$x['id'] ?>" class="block px-5 py-3 hover:bg-surface"><div class="font-bold text-danger"><?= e($x['name']) ?></div>
           <div class="text-xs font-semibold"><?= e(t('Last article')) ?>: <?= e(ago($x['last_article_at'])) ?></div></a>
       <?php endforeach; ?>
     </div>
   </section>
   <section class="<?= ui('card') ?> overflow-hidden xl:col-span-1">
-    <div class="px-5 py-3 bg-ms-light border-b border-black font-bold"><?= e(t('Slowest sources')) ?></div>
-    <div class="divide-y divide-black/10">
+    <div class="px-5 py-3 bg-[#F6F8FC] border-b border-line font-bold"><?= e(t('Slowest sources')) ?></div>
+    <div class="divide-y divide-line">
       <?php foreach ($m['slow'] as $x): ?>
-        <a href="/source.php?id=<?= (int)$x['id'] ?>" class="flex justify-between px-5 py-3 hover:bg-ms-light/60"><span class="font-bold"><?= e($x['name']) ?></span><span class="font-semibold"><?= (int)$x['last_response_ms'] ?> ms</span></a>
+        <a href="/source.php?id=<?= (int)$x['id'] ?>" class="flex justify-between px-5 py-3 hover:bg-surface"><span class="font-bold"><?= e($x['name']) ?></span><span class="font-semibold"><?= (int)$x['last_response_ms'] ?> ms</span></a>
       <?php endforeach; ?>
       <?php if (!$m['slow']): ?><div class="p-5 text-sm font-semibold"><?= e(t('No data yet.')) ?></div><?php endif; ?>
     </div>
   </section>
   <section class="<?= ui('card') ?> overflow-hidden xl:col-span-1">
-    <div class="px-5 py-3 bg-ms-light border-b border-black font-bold"><?= e(t('Largest tables')) ?></div>
-    <div class="divide-y divide-black/10">
+    <div class="px-5 py-3 bg-[#F6F8FC] border-b border-line font-bold"><?= e(t('Largest tables')) ?></div>
+    <div class="divide-y divide-line">
       <?php foreach ($m['tables'] as $x): ?>
         <div class="flex justify-between px-5 py-2.5 text-sm"><span class="font-bold"><?= e($x['table_name'] ?? $x['TABLE_NAME']) ?></span><span class="font-semibold"><?= number_format((float)($x['mb'] ?? $x['MB'])) ?> MB · ~<?= number_format((int)($x['table_rows'] ?? $x['TABLE_ROWS'])) ?></span></div>
       <?php endforeach; ?>

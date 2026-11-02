@@ -10,106 +10,134 @@ function page_head(string $title): void
 <title><?= e($title) ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
-tailwind.config = { theme: { extend: { colors: {
-  ms: { DEFAULT: '#0078D4', dark: '#005A9E', light: '#EAF4FD', mid: '#B3D7F5' }
-}, fontFamily: { sans: ['Inter', 'Segoe UI', 'system-ui', 'sans-serif'] } } } };
+tailwind.config = { theme: { extend: {
+  colors: {
+    ms: { DEFAULT: '#0078D4', dark: '#005A9E', light: '#E8F2FC', mid: '#B3D7F5' },
+    ink: '#0F1B2D', muted: '#3C4C63', line: '#E1E7F0', line2: '#CBD5E3', surface: '#F3F6FA',
+    danger: '#8E1F25', dangerbg: '#FDE7E9', warn: '#6B4E00', warnbg: '#FFF4CE'
+  },
+  fontFamily: { sans: ['Inter', 'Noto Sans Armenian', 'Segoe UI', 'system-ui', 'sans-serif'] }
+} } };
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Armenian:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <?php }
 
-// [ключ => [ссылка, подпись, право, иконка(path)]] ; группа Sources с подменю
-function nav_tree(): array
+// Секции меню: [заголовок, [[ключ, ссылка, подпись, право, иконка, бейдж?]]]
+function nav_sections(): array
 {
+    $ic = [
+        'home' => 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', 'list' => 'M4 6h16M4 12h16M4 18h10', 'tag' => 'M20 12l-8 8-9-9V3h8zM7.5 7.5h.01',
+        'doc' => 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7', 'pulse' => 'M3 12h4l3-8 4 16 3-8h4', 'log' => 'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3',
+        'users' => 'M17 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2M10 10a4 4 0 100-8 4 4 0 000 8z', 'search' => 'M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z',
+        'plus' => 'M12 5v14M5 12h14',
+    ];
+    $editor = !can('sources.view');
     return [
-        ['dashboard', '/', 'Dashboard', 'dashboard', 'M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10'],
-        ['group', 'Sources', 'M4 6h16M4 12h16M4 18h10', [
-            ['sources', '/sources.php', 'All sources', 'sources.view'],
-            ['categories', '/categories.php', 'Categories', 'categories.view'],
-            ['source_add', '/source_edit.php', 'Add source', 'source.add'],
-        ]],
-        ['health', '/health.php', 'Engine', 'logs.view', 'M3 13h4l3-8 4 14 3-6h4'],
-        ['logs', '/logs.php', 'Logs', 'logs.view', 'M9 8h6M9 12h6M9 16h4M5 4h14v16H5z'],
-        ['search', '/search.php', 'Search', 'search', 'M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z'],
-        ['users', '/users.php', 'Users', 'users.view', 'M17 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2M10 10a4 4 0 100-8 4 4 0 000 8zM21 20v-2a4 4 0 00-3-3.9'],
+        ['Overview', [['dashboard', '/', 'Dashboard', 'dashboard', $ic['home']]]],
+        ['Content', array_values(array_filter([
+            ['sources', '/sources.php', 'Sources', 'sources.view', $ic['list']],
+            ['categories', '/categories.php', 'Categories', 'categories.view', $ic['tag']],
+            ['articles', '/articles.php', 'Articles', 'articles.view', $ic['doc']],
+            $editor ? ['source_add', '/source_edit.php', 'Add source', 'source.add', $ic['plus']] : null,
+            $editor ? ['search', '/search.php', 'Search', 'search', $ic['search']] : null,
+        ]))],
+        ['Operations', [['health', '/health.php', 'Engine', 'logs.view', $ic['pulse']], ['logs', '/logs.php', 'Logs', 'logs.view', $ic['log'], true]]],
+        ['Settings', [['users', '/users.php', 'Users', 'users.view', $ic['users']]]],
     ];
 }
 
-function nav_link(string $href, string $label, bool $on, string $icon = '', bool $sub = false): string
+function nav_link(string $href, string $label, bool $on, string $icon, string $badge = ''): string
 {
-    $cls = 'flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-sm font-semibold transition '
-        . ($sub ? 'ml-5 ' : '') . ($on ? 'bg-ms text-white border border-black shadow-[0_2px_0_0_#000]' : 'text-black border border-transparent hover:bg-ms-light');
-    $svg = $icon ? '<svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="' . e($icon) . '"/></svg>' : '<span class="h-1.5 w-1.5 rounded-full bg-current"></span>';
-    return '<a href="' . e($href) . '" class="' . $cls . '">' . $svg . e(t($label)) . '</a>';
+    $cls = 'flex items-center gap-3 h-10 px-3 rounded-lg text-sm font-medium transition ' . ($on ? 'bg-ms-light text-[#0B4F94]' : 'text-[#26364D] hover:bg-surface');
+    $svg = '<svg class="h-[18px] w-[18px] shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="' . e($icon) . '"/></svg>';
+    return '<a href="' . e($href) . '" class="' . $cls . '">' . $svg . '<span class="flex-1">' . e(t($label)) . '</span>'
+        . ($badge !== '' ? '<span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-dangerbg text-danger">' . e($badge) . '</span>' : '') . '</a>';
+}
+
+// Состояние браузерного сервиса (кэш на 20 секунд в сессии)
+function browser_status(): ?array
+{
+    $c = $_SESSION['bstat'] ?? null;
+    if ($c && time() - $c[0] < 20) {
+        return $c[1];
+    }
+    $ch = curl_init(CRAWL_BROWSER_URL . '/health');
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 1, CURLOPT_CONNECTTIMEOUT => 1]);
+    $r = curl_exec($ch);
+    $j = $r ? json_decode($r, true) : null;
+    $_SESSION['bstat'] = [time(), $j];
+    return $j ?: null;
+}
+
+function status_pill(): string
+{
+    $c = crawler_status(cdb());
+    $workers = 0;
+    $r = cdb()->query("SELECT COUNT(*) FROM crawler_status WHERE role = 'fulltext' AND heartbeat_at > NOW() - INTERVAL 30 SECOND");
+    if ($r) $workers = (int)$r->fetch_row()[0];
+    if (!$c['online']) {
+        return '<a href="/health.php" class="hidden sm:flex items-center gap-2 h-8 px-3 rounded-full bg-dangerbg text-danger text-[13px] font-semibold"><span class="h-2 w-2 rounded-full bg-danger"></span>' . e(t('Crawler offline')) . '</a>';
+    }
+    return '<a href="/health.php" class="hidden sm:flex items-center gap-2 h-8 px-3 rounded-full bg-ms-light text-[#0B4F94] text-[13px] font-semibold"><span class="h-2 w-2 rounded-full bg-ms"></span>'
+        . e(t('Crawler running')) . ' · ' . ($workers + 1) . ' ' . e(t('processes')) . '</a>';
 }
 
 function app_start(string $title, string $active, array $user): void
 {
     page_head($title . ' — Media Monitoring Admin');
     $initial = e(strtoupper(mb_substr($user['username'], 0, 1)));
+    $errs = 0;
+    if (can('logs.view') && ($r = cdb()->query("SELECT COUNT(*) FROM crawl_log WHERE level='error' AND created_at > NOW() - INTERVAL 24 HOUR"))) {
+        $errs = (int)$r->fetch_row()[0];
+    }
     ?>
-<body class="min-h-screen bg-ms-light/50 text-black font-sans antialiased">
+<body class="min-h-screen bg-surface text-ink font-sans antialiased">
 <div class="min-h-screen lg:flex">
-  <div id="overlay" class="hidden fixed inset-0 z-30 bg-black/50 lg:hidden"></div>
+  <div id="overlay" class="hidden fixed inset-0 z-30 bg-ink/50 lg:hidden"></div>
 
-  <aside id="sidebar" class="fixed lg:sticky top-0 z-40 h-screen w-72 shrink-0 -translate-x-full lg:translate-x-0 transition-transform bg-white border-r border-ms-mid shadow-[6px_0_28px_-14px_rgba(0,120,212,.35)] flex flex-col">
-    <div class="px-5 py-5 flex items-center gap-3 border-b border-black/10">
-      <div class="h-10 w-10 rounded-xl bg-ms text-white border border-black shadow-[0_2px_0_0_#000] flex items-center justify-center text-lg font-bold">M</div>
-      <div class="leading-tight">
-        <div class="font-bold">Media Monitoring</div>
-        <div class="text-xs font-semibold text-ms">Admin · beta</div>
-      </div>
+  <aside id="sidebar" class="fixed lg:sticky top-0 z-40 h-screen w-[248px] shrink-0 -translate-x-full lg:translate-x-0 transition-transform bg-white border-r border-line flex flex-col px-3.5 py-5">
+    <div class="flex items-center gap-2.5 px-2.5 pb-4">
+      <div class="h-[34px] w-[34px] rounded-[9px] bg-ms text-white flex items-center justify-center text-base font-bold">M</div>
+      <div class="leading-tight"><div class="text-[15px] font-bold">Media Monitoring</div><div class="text-xs text-muted">Admin console</div></div>
     </div>
-    <nav class="flex-1 overflow-y-auto p-3 space-y-1">
-      <?php foreach (nav_tree() as $n):
-        if ($n[0] === 'group') {
-            $kids = array_filter($n[3], fn($k) => can($k[3]));
-            if (!$kids) continue;
-            $hasActive = (int)in_array($active, array_column($kids, 0), true);
-            echo '<div data-group="' . e(strtolower($n[1])) . '" data-active="' . $hasActive . '">';
-            echo '<button type="button" aria-expanded="false" class="grp flex w-full items-center justify-between gap-3 rounded-lg border border-transparent px-3.5 py-2.5 text-sm font-semibold text-black hover:bg-ms-light transition">'
-                . '<span class="flex items-center gap-3"><svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="' . e($n[2]) . '"/></svg>' . e(t($n[1])) . '</span>'
-                . '<span class="grp-ico w-5 text-center text-lg font-bold leading-none text-ms">+</span></button>';
-            echo '<div class="grp-body hidden mt-1 space-y-1">';
-            foreach ($kids as $k) echo nav_link($k[1], $k[2], $k[0] === $active, '', true);
-            echo '</div></div>';
-            continue;
-        }
-        if (!can($n[3])) continue;
-        echo nav_link($n[1], $n[2], $n[0] === $active, $n[4]);
-      endforeach; ?>
+    <nav class="flex-1 overflow-y-auto space-y-0.5">
+      <?php foreach (nav_sections() as [$head, $items]):
+        $items = array_values(array_filter($items, fn($i) => can($i[3])));
+        if (!$items) continue; ?>
+        <div class="px-3 pt-4 pb-1.5 text-[11px] font-semibold uppercase tracking-[.08em] text-muted"><?= e(t($head)) ?></div>
+        <?php foreach ($items as $i) echo nav_link($i[1], $i[2], $i[0] === $active, $i[4], (!empty($i[5]) && $errs) ? (string)min($errs, 99) : ''); ?>
+      <?php endforeach; ?>
     </nav>
-    <div class="p-3 border-t border-black/10">
-      <a href="/profile.php" class="flex items-center gap-3 rounded-xl border <?= $active === 'profile' ? 'border-black bg-ms-light' : 'border-black/10 hover:border-black hover:bg-ms-light' ?> p-3 transition">
-        <span class="h-10 w-10 rounded-full bg-ms text-white border border-black flex items-center justify-center font-bold"><?= $initial ?></span>
-        <span class="leading-tight min-w-0">
-          <span class="block font-bold truncate"><?= e($user['username']) ?></span>
-          <span class="block text-xs font-semibold text-ms-dark"><?= e(t(ucfirst($user['role']))) ?> · <?= e(t('Profile')) ?></span>
-        </span>
-      </a>
-      <a href="/logout.php" class="mt-2 block text-center rounded-lg border border-black text-sm font-semibold py-2 hover:bg-black hover:text-white transition"><?= e(t('Sign out')) ?></a>
-    </div>
+    <a href="/profile.php" class="mt-3 flex items-center gap-2.5 p-3 rounded-xl border <?= $active === 'profile' ? 'border-ms bg-ms-light' : 'border-line hover:border-line2' ?> transition">
+      <span class="h-[34px] w-[34px] rounded-full bg-ms text-white flex items-center justify-center text-sm font-semibold"><?= $initial ?></span>
+      <span class="leading-tight min-w-0 flex-1"><span class="block text-sm font-semibold truncate"><?= e($user['username']) ?></span><span class="block text-xs text-muted"><?= e(t(ucfirst($user['role']))) ?></span></span>
+    </a>
+    <a href="/logout.php" class="mt-2 text-center h-9 leading-9 rounded-[10px] border border-line2 text-[13px] font-semibold hover:bg-surface transition"><?= e(t('Sign out')) ?></a>
   </aside>
 
-  <div class="flex-1 min-w-0 flex flex-col">
-    <header class="sticky top-0 z-20 bg-white border-b border-ms-mid shadow-[0_10px_28px_-18px_rgba(0,120,212,.45)] flex items-center gap-3 px-4 sm:px-8 py-3">
-      <button id="menuBtn" aria-label="Menu" class="lg:hidden h-10 w-10 shrink-0 rounded-lg border border-black bg-ms text-white shadow-[0_2px_0_0_#000] flex items-center justify-center">
-        <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+  <div class="flex-1 min-w-0 flex flex-col pb-[72px] lg:pb-0">
+    <header class="sticky top-0 z-20 bg-white border-b border-line flex items-center gap-3 sm:gap-4 h-16 px-4 sm:px-8">
+      <button id="menuBtn" aria-label="Menu" class="lg:hidden h-11 w-11 shrink-0 rounded-xl border border-line2 bg-white flex items-center justify-center">
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
       <?php if (can('search')): ?>
-      <form action="/search.php" method="get" class="flex-1 max-w-xl relative">
-        <svg class="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-ms" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z"/></svg>
-        <input name="q" value="<?= e((string)($_GET['q'] ?? '')) ?>" placeholder="<?= e(t('Search articles…')) ?>" class="<?= ui('inp') ?> pl-10">
+      <form action="/search.php" method="get" class="flex-1 max-w-[520px] relative">
+        <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 h-[18px] w-[18px] text-muted" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z"/></svg>
+        <input id="gsearch" name="q" value="<?= e((string)($_GET['q'] ?? '')) ?>" placeholder="<?= e(t('Search articles…')) ?>" class="w-full h-10 rounded-[10px] border border-line2 bg-[#F8FAFD] pl-10 pr-14 text-sm text-ink placeholder:text-muted/70 focus:outline-none focus:border-ms focus:bg-white focus:ring-4 focus:ring-ms-light">
+        <span class="hidden sm:block absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted border border-line2 rounded-md px-1.5 py-0.5 bg-white">Ctrl K</span>
       </form>
       <?php endif; ?>
-      <a href="/profile.php" class="ml-auto hidden sm:flex items-center gap-2 font-semibold hover:text-ms">
-        <span class="h-9 w-9 rounded-full bg-ms text-white border border-black flex items-center justify-center font-bold"><?= $initial ?></span>
-      </a>
+      <div class="flex-1"></div>
+      <?php if (can('logs.view')) echo status_pill(); ?>
+      <?php if (can('source.add') && can('sources.view')): ?>
+        <a href="/source_edit.php" class="<?= ui('btn') ?> hidden sm:inline-flex"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><?= e(t('Add source')) ?></a>
+      <?php endif; ?>
     </header>
-    <main class="flex-1 px-4 sm:px-8 py-6 sm:py-8">
+    <main class="flex-1 px-4 sm:px-8 py-6 sm:py-7">
     <?php if ($f = flash_get()): $ok = $f[0] === 'ok'; ?>
-      <div class="mb-6 rounded-xl border px-4 py-3 text-sm font-semibold <?= $ok ? 'border-black bg-ms-light' : 'border-red-700 bg-red-50 text-red-900' ?>"><?= e(t($f[1])) ?></div>
+      <div class="mb-5 rounded-xl border px-4 py-3 text-sm font-medium <?= $ok ? 'border-ms-mid bg-ms-light text-[#0B4F94]' : 'border-[#E2A9AE] bg-dangerbg text-danger' ?>"><?= e(t($f[1])) ?></div>
     <?php endif; ?>
 <?php }
 
@@ -118,27 +146,39 @@ function app_end(): void
     </main>
   </div>
 </div>
+
+<?php // нижняя панель на телефоне
+$tabs = [['/', 'Home', 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', 'dashboard'], ['/sources.php', 'Sources', 'M4 6h16M4 12h16M4 18h10', 'sources.view'],
+         ['/source_edit.php', 'Add', 'M12 5v14M5 12h14', 'source.add'], ['/search.php', 'Search', 'M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z', 'search'],
+         ['/health.php', 'Engine', 'M3 12h4l3-8 4 16 3-8h4', 'logs.view']];
+?>
+<nav aria-label="Primary" class="lg:hidden fixed bottom-0 inset-x-0 z-20 bg-white border-t border-line flex px-1.5 pt-1.5 pb-2.5">
+  <?php foreach ($tabs as [$href, $label, $icon, $perm]): if (!can($perm)) continue; if ($label === 'Add' && can('sources.view')) continue;
+    $on = ($_SERVER['SCRIPT_NAME'] === $href) || ($href === '/' && $_SERVER['SCRIPT_NAME'] === '/index.php'); ?>
+    <a href="<?= e($href) ?>" class="flex-1 flex flex-col items-center gap-0.5 py-1.5 text-[11px] font-semibold <?= $on ? 'text-[#0B4F94]' : 'text-muted' ?>">
+      <svg class="h-[22px] w-[22px]" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="<?= e($icon) ?>"/></svg><?= e(t($label)) ?>
+    </a>
+  <?php endforeach; ?>
+  <button id="moreBtn" class="flex-1 flex flex-col items-center gap-0.5 py-1.5 text-[11px] font-semibold text-muted">
+    <svg class="h-[22px] w-[22px]" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg><?= e(t('More')) ?>
+  </button>
+</nav>
 <script>
 const sb = document.getElementById('sidebar'), ov = document.getElementById('overlay');
 function tog(o) { sb.classList.toggle('-translate-x-full', !o); ov.classList.toggle('hidden', !o); }
 document.getElementById('menuBtn').onclick = () => tog(true);
+document.getElementById('moreBtn').onclick = () => tog(true);
 ov.onclick = () => tog(false);
-document.querySelectorAll('[data-group]').forEach(g => {
-  const id = 'nav:' + g.dataset.group, btn = g.querySelector('.grp'), body = g.querySelector('.grp-body'), ico = g.querySelector('.grp-ico');
-  let open = g.dataset.active === '1';
-  try { const v = localStorage.getItem(id); if (v !== null && !open) open = v === '1'; } catch (e) {}
-  const apply = () => { body.classList.toggle('hidden', !open); ico.textContent = open ? '−' : '+'; btn.setAttribute('aria-expanded', open); };
-  btn.onclick = () => { open = !open; try { localStorage.setItem(id, open ? '1' : '0'); } catch (e) {} apply(); };
-  apply();
-});
+document.addEventListener('keydown', e => { const g = document.getElementById('gsearch'); if (g && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); g.focus(); g.select(); } });
 </script>
 </body>
 </html>
 <?php }
 
-function page_title(string $title, string $actions = ''): void
+function page_title(string $title, string $actions = '', string $sub = ''): void
 {
-    echo '<div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><h1 class="' . ui('h1') . '">' . e($title) . '</h1>' . ($actions ? '<div class="flex flex-wrap gap-2">' . $actions . '</div>' : '') . '</div>';
+    echo '<div class="mb-6 flex flex-wrap items-center justify-between gap-3"><div class="min-w-0"><h1 class="' . ui('h1') . '">' . e($title) . '</h1>'
+        . ($sub !== '' ? '<div class="mt-1 text-sm text-muted">' . e($sub) . '</div>' : '') . '</div>' . ($actions ? '<div class="flex flex-wrap gap-2">' . $actions . '</div>' : '') . '</div>';
 }
 
 function forbidden(array $user): void
@@ -150,14 +190,12 @@ function forbidden(array $user): void
     exit;
 }
 
+// Красная плашка только если опрос лент остановлен (обычный статус виден в шапке)
 function crawler_banner(): void
 {
     $c = crawler_status(cdb());
-    if ($c['online']) {
-        echo '<div class="mb-5 inline-flex items-center gap-2 rounded-full border border-black bg-white px-3 py-1 text-sm font-semibold"><span class="h-2.5 w-2.5 rounded-full bg-ms"></span>'
-            . e(t('Crawler running')) . ' · ' . e(t('up since')) . ' ' . e(fmt_dt($c['started_at'])) . '</div>';
-    } else {
-        echo '<div class="mb-5 rounded-xl border border-red-700 bg-red-50 text-red-900 px-4 py-3 text-sm font-semibold">'
-            . e(t('Crawler is offline. Scheduled fetching is stopped. “Fetch now” still works. Start it on the server: systemctl start mm-crawler')) . '</div>';
+    if (!$c['online']) {
+        echo '<div class="mb-5 rounded-xl border border-[#E2A9AE] bg-dangerbg text-danger px-4 py-3 text-sm font-semibold">'
+            . e(t('Crawler is offline. Scheduled fetching is stopped. “Fetch now” still works. Start it on the server: sudo systemctl start mm-crawler')) . '</div>';
     }
 }

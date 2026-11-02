@@ -15,7 +15,7 @@ page_title(t('Users'), '<a href="/user_edit.php" class="' . ui('btn') . '">+ ' .
 mobile_sort(['username' => 'Username', 'role' => 'Role', 'last_login' => 'Last login'], $st); ?>
 <div class="<?= ui('card') ?> overflow-hidden hidden md:block">
   <table class="w-full">
-    <thead class="bg-ms-light border-b border-black"><tr>
+    <thead class="bg-[#F6F8FC] border-b border-line"><tr>
       <th class="<?= ui('th') ?>"><?= sort_th('Username', 'username', $st) ?></th>
       <th class="<?= ui('th') ?>"><?= sort_th('Role', 'role', $st) ?></th>
       <th class="<?= ui('th') ?>"><?= sort_th('Status', 'status', $st) ?></th>
@@ -23,9 +23,9 @@ mobile_sort(['username' => 'Username', 'role' => 'Role', 'last_login' => 'Last l
       <th class="<?= ui('th') ?>"><?= sort_th('Created', 'created', $st) ?></th>
       <th class="<?= ui('th') ?>"></th>
     </tr></thead>
-    <tbody class="divide-y divide-black/10">
+    <tbody class="divide-y divide-line">
     <?php foreach ($rows as $u): ?>
-      <tr class="hover:bg-ms-light/60">
+      <tr class="hover:bg-surface">
         <td class="<?= ui('td') ?> font-bold"><?= e($u['username']) ?><?= (int)$u['id'] === $user['id'] ? ' <span class="' . ui('chip') . '">' . e(t('You')) . '</span>' : '' ?></td>
         <td class="<?= ui('td') ?>"><span class="<?= ui('chip') ?> <?= $u['role'] === 'admin' ? 'bg-ms text-white' : '' ?>"><?= e(t(ucfirst($u['role']))) ?></span></td>
         <td class="<?= ui('td') ?>"><span class="<?= ui('chip') ?> <?= $u['is_active'] ? '' : 'bg-black text-white' ?>"><?= e(t($u['is_active'] ? 'Active' : 'Disabled')) ?></span></td>

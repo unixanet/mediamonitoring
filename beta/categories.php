@@ -51,16 +51,16 @@ page_title(t('Categories')); ?>
 <?php else:
   mobile_sort(['name' => 'Name', 'sources' => 'Sources', 'articles' => 'Articles'], $st); ?>
   <div class="<?= ui('card') ?> overflow-hidden">
-    <div class="hidden md:grid grid-cols-[1fr_7rem_8rem_11rem_16rem] bg-ms-light border-b border-black">
+    <div class="hidden md:grid grid-cols-[1fr_7rem_8rem_11rem_16rem] bg-[#F6F8FC] border-b border-line">
       <div class="<?= ui('th') ?>"><?= sort_th('Name', 'name', $st) ?></div>
       <div class="<?= ui('th') ?>"><?= sort_th('Sources', 'sources', $st) ?></div>
       <div class="<?= ui('th') ?>"><?= sort_th('Articles', 'articles', $st) ?></div>
       <div class="<?= ui('th') ?>"><?= sort_th('Created', 'created', $st) ?></div>
       <div class="<?= ui('th') ?>"></div>
     </div>
-    <div class="divide-y divide-black/10">
+    <div class="divide-y divide-line">
     <?php foreach ($rows as $c): ?>
-      <div class="md:grid md:grid-cols-[1fr_7rem_8rem_11rem_16rem] md:items-center p-4 md:p-0 hover:bg-ms-light/60">
+      <div class="md:grid md:grid-cols-[1fr_7rem_8rem_11rem_16rem] md:items-center p-4 md:p-0 hover:bg-surface">
         <div class="md:px-4 md:py-3 min-w-0">
           <a href="/articles.php?category=<?= (int)$c['id'] ?>" class="font-bold text-ms hover:text-ms-dark hover:underline" id="name-<?= (int)$c['id'] ?>"><?= e($c['name']) ?></a>
           <form method="post" class="hidden" id="rn-<?= (int)$c['id'] ?>"><div class="flex gap-2">

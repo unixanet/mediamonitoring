@@ -9,7 +9,7 @@ $off = max(0, (int)($_GET['offset'] ?? 0));
 $per = 20;
 $html = '';
 $n = 0;
-$r = cdb()->query("SELECT id, title, published_at FROM articles WHERE source_id = $id ORDER BY published_at DESC, id DESC LIMIT " . ($per + 1) . " OFFSET $off");
+$r = cdb()->query("SELECT id, title, url, published_at, content_status FROM articles WHERE source_id = $id ORDER BY published_at DESC, id DESC LIMIT " . ($per + 1) . " OFFSET $off");
 while ($r && ($a = $r->fetch_assoc())) {
     if (++$n <= $per) {
         $html .= source_article_row($a);

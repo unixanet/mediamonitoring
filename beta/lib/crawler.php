@@ -6,6 +6,7 @@ require_once __DIR__ . '/engine.php';
 const CRAWL_UA_BOT = 'Mozilla/5.0 (compatible; MediaMonitoringBot/1.0; +https://beta.mediamonitoring.am)';
 const CRAWL_UA_BROWSER = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 const CRAWL_MAX_BODY = 10485760;
+const CRAWL_BROWSER_URL = 'http://127.0.0.1:8765';   // сервис настоящего браузера (browser/server.py)
 
 function crawler_connect(array $c): mysqli
 {
@@ -244,9 +245,65 @@ function crawl_log(mysqli $db, int $sid, string $level, string $event, ?int $htt
     $q->close();
 }
 
+// Идти ли через настоящий браузер: всегда (browser) или после блокировки на 6 часов (auto)
+function crawl_browser_active(array $src): bool
+{
+    $m = $src['fetch_method'] ?? 'http';
+    if ($m === 'browser') {
+        return true;
+    }
+    if ($m !== 'auto') {
+        return false;
+    }
+    $s = json_decode($src['state'] ?? '', true);
+    return (int)($s['browser_until'] ?? 0) > time();
+}
+
+// Запомнить, что сайт блокирует обычные запросы: следующие 6 часов этот источник ходит через браузер
+function crawl_mark_browser(mysqli $db, array &$src): void
+{
+    $until = time() + 6 * 3600;
+    $db->query("UPDATE sources SET state = JSON_SET(COALESCE(state, '{}'), '$.browser_until', $until) WHERE id = " . (int)$src['id']);
+    $s = json_decode($src['state'] ?? '', true) ?: [];
+    $s['browser_until'] = $until;
+    $src['state'] = json_encode($s);
+}
+
+// Похоже ли это на блокировку (а не на обычную ошибку)? $f = результат crawl_failure
+function crawl_is_block(?array $f, int $errno): bool
+{
+    if (!$f) {
+        return false;
+    }
+    if ($f[0] === 'cloudflare_block') {
+        return true;
+    }
+    if ($f[0] === 'http_error' && preg_match('/^HTTP (403|429|444|503)\b/', $f[1])) {
+        return true;
+    }
+    return in_array($errno, [52, 56], true);   // соединение закрыто без ответа: блокировка по отпечатку
+}
+
 function crawl_make_handle(array $src, bool $force, stdClass $st, ?string $url = null, string $kind = 'feed')
 {
     $url = $url ?? $src['feed_url'];
+    if (crawl_browser_active($src)) {          // запрос уходит в сервис браузера, тот вернёт тело страницы и её статус
+        $st->via_browser = true;
+        $ch = curl_init(CRAWL_BROWSER_URL . '/get?timeout=50&url=' . rawurlencode($url));
+        curl_setopt_array($ch, [
+            CURLOPT_TIMEOUT => 75, CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_HEADERFUNCTION => function ($c, $line) use ($st) {
+                if (stripos($line, 'cf-mitigated:') === 0) $st->cf = true;
+                elseif (stripos($line, 'x-browser-error:') === 0) $st->berr = trim(substr($line, 16));
+                return strlen($line);
+            },
+            CURLOPT_WRITEFUNCTION => function ($c, $d) use ($st) {
+                $st->body .= $d;
+                return strlen($st->body) > CRAWL_MAX_BODY ? 0 : strlen($d);
+            },
+        ]);
+        return $ch;
+    }
     $browser = ($src['fetch_profile'] ?? 'browser') === 'browser';
     $accept = $kind === 'page'
         ? 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
@@ -311,6 +368,14 @@ function crawl_failure(array $src, string $url, $ch, stdClass $st, int $errno): 
     $ms = (int)round(curl_getinfo($ch, CURLINFO_TOTAL_TIME) * 1000);
     $details = 'URL: ' . $url . "\nFinal URL: " . curl_getinfo($ch, CURLINFO_EFFECTIVE_URL)
         . "\nHTTP: " . $http . "\nContent-Type: " . curl_getinfo($ch, CURLINFO_CONTENT_TYPE) . "\nDuration: " . $ms . ' ms';
+    if (!empty($st->via_browser)) {
+        if ($errno === 7 || $errno === 28) {
+            return ['browser_down', 'The browser service is not running or did not answer. On the server: sudo systemctl start mm-browser', $details];
+        }
+        if (!empty($st->berr) && !$errno) {
+            return ['browser_error', 'Browser: ' . $st->berr, $details];
+        }
+    }
     if ($errno) {
         $event = $errno === 28 ? 'timeout' : (in_array($errno, [6, 7, 52, 56], true) ? 'connection' : (in_array($errno, [35, 51, 58, 59, 60, 77], true) ? 'ssl' : 'curl_error'));
         $msg = ($event === 'timeout' ? 'Timeout: the site did not answer in 20 s. ' : '') . curl_error($ch);
@@ -322,7 +387,9 @@ function crawl_failure(array $src, string $url, $ch, stdClass $st, int $errno): 
     $snippet = mb_substr(crawl_clean($st->body), 0, 300);
     $details .= "\n\nResponse start:\n" . $snippet;
     if (in_array($http, [403, 429, 503], true) && ($st->cf || stripos($st->body, 'challenges.cloudflare.com') !== false || stripos($snippet, 'Just a moment') !== false)) {
-        return ['cloudflare_block', 'HTTP ' . $http . ': blocked by a Cloudflare challenge. Request headers cannot pass it. Ask the site to allowlist the server IP, or use an RSS proxy service (e.g. rss.app) as the feed URL.', $details];
+        return ['cloudflare_block', !empty($st->via_browser)
+            ? 'HTTP ' . $http . ': the Cloudflare challenge was not passed even by the real browser. Ask the site to allowlist the server IP.'
+            : 'HTTP ' . $http . ': blocked by a Cloudflare challenge. Plain requests cannot pass it: set "How to fetch" to Auto or Real browser.', $details];
     }
     $hint = [403 => ' (blocked by the site)', 429 => ' (too many requests)', 404 => ' (not found)', 503 => ' (site unavailable)'][$http] ?? '';
     return ['http_error', 'HTTP ' . $http . $hint, $details];
@@ -359,10 +426,21 @@ function crawl_process(mysqli $db, array $src, $ch, stdClass $st, int $errno): a
     $ms = (int)round(curl_getinfo($ch, CURLINFO_TOTAL_TIME) * 1000);
     $res = ['ok' => false, 'http' => $http, 'new' => 0, 'feed' => 0, 'old' => 0, 'dup' => 0, 'error' => '', 'ms' => $ms];
 
-    if ($f = crawl_failure($src, $src['feed_url'], $ch, $st, $errno)) {
+    $f = crawl_failure($src, $src['feed_url'], $ch, $st, $errno);
+    if ($f && ($src['fetch_method'] ?? 'http') === 'auto' && empty($st->via_browser) && crawl_is_block($f, $errno)) {
+        crawl_mark_browser($db, $src);                       // сайт блокирует обычные запросы: повторяем через браузер и дальше ходим через него
+        $st2 = new stdClass();
+        $st2->body = '';
+        $st2->etag = $st2->lastmod = null;
+        $st2->cf = false;
+        $ch2 = crawl_make_handle($src, true, $st2);
+        curl_exec($ch2);
+        return crawl_process($db, $src, $ch2, $st2, curl_errno($ch2));
+    }
+    if ($f) {
         return crawl_fail($db, $src, $res, $f[0], $f[1], $f[2]);
     }
-    $details = 'URL: ' . $src['feed_url'] . "\nHTTP: " . $http . "\nDuration: " . $ms . ' ms';
+    $details = 'URL: ' . $src['feed_url'] . "\nHTTP: " . $http . "\nDuration: " . $ms . ' ms' . (!empty($st->via_browser) ? "\nFetched by: real browser" : '');
     if ($http === 304) {
         $res['ok'] = true;
         $res['not_modified'] = true;
@@ -541,12 +619,27 @@ function sm_fetch(array $src, string $url, bool $force, array &$state): array
     $st->body = '';
     $st->etag = $st->lastmod = null;
     $st->cf = false;
+    $src['state'] = json_encode($state);
     $ch = crawl_make_handle($src, $force, $st, $url, 'feed');
     curl_exec($ch);
     $errno = curl_errno($ch);
     $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     $ms = (int)round(curl_getinfo($ch, CURLINFO_TOTAL_TIME) * 1000);
     $fail = crawl_failure($src, $url, $ch, $st, $errno);
+    if ($fail && ($src['fetch_method'] ?? 'http') === 'auto' && empty($st->via_browser) && crawl_is_block($fail, $errno)) {
+        $state['browser_until'] = time() + 6 * 3600;         // сохранится вместе с состоянием sitemap
+        $src['state'] = json_encode($state);
+        $st = new stdClass();
+        $st->body = '';
+        $st->etag = $st->lastmod = null;
+        $st->cf = false;
+        $ch = crawl_make_handle($src, true, $st, $url, 'feed');
+        curl_exec($ch);
+        $errno = curl_errno($ch);
+        $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $ms = (int)round(curl_getinfo($ch, CURLINFO_TOTAL_TIME) * 1000);
+        $fail = crawl_failure($src, $url, $ch, $st, $errno);
+    }
     if (!$fail && ($st->etag || $st->lastmod)) {
         $state['etag'][$key] = [$st->etag, $st->lastmod];
     }

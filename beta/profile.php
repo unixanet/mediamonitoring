@@ -47,14 +47,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 app_start(t('Profile'), 'profile', $user);
 page_title(t('Profile'));
 if ($errors): ?>
-  <div class="mb-6 max-w-xl rounded-xl border border-red-700 bg-red-50 text-red-900 text-sm font-semibold px-4 py-3">
+  <div class="mb-6 max-w-xl rounded-xl border border-[#E2A9AE] bg-dangerbg text-danger text-sm font-semibold px-4 py-3">
     <?php foreach ($errors as $m): ?><div><?= e(t($m)) ?></div><?php endforeach; ?>
   </div>
 <?php endif; ?>
 <form method="post" class="<?= ui('card') ?> max-w-xl p-5 sm:p-8 space-y-5">
   <input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
   <div class="flex items-center gap-3">
-    <span class="h-12 w-12 rounded-full bg-ms text-white border border-black flex items-center justify-center text-lg font-bold"><?= e(strtoupper(mb_substr($user['username'], 0, 1))) ?></span>
+    <span class="h-12 w-12 rounded-full bg-ms text-white border border-line2 flex items-center justify-center text-lg font-bold"><?= e(strtoupper(mb_substr($user['username'], 0, 1))) ?></span>
     <div><div class="font-bold text-lg"><?= e($user['username']) ?></div><span class="<?= ui('chip') ?> bg-ms text-white"><?= e(t(ucfirst($user['role']))) ?></span></div>
   </div>
   <?php if (can('users.manage')): ?>
@@ -74,7 +74,7 @@ if ($errors): ?>
     </div>
   </div>
   <p class="text-sm font-medium"><?= e(t('Leave the new password empty to keep the current one.')) ?></p>
-  <div class="border-t border-black/10 pt-5">
+  <div class="border-t border-line pt-5">
     <label class="<?= ui('lbl') ?>" for="current"><?= e(t('Current password (to confirm)')) ?></label>
     <input id="current" name="current" type="password" required autocomplete="current-password" class="<?= ui('inp') ?>">
   </div>

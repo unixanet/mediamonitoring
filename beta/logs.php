@@ -50,7 +50,7 @@ $rows = array_slice($rows, 0, $per);
 
 function lvl_cls(string $l): string
 {
-    return $l === 'error' ? 'border-red-700 bg-red-50 text-red-900' : ($l === 'warning' ? 'border-black bg-white text-black' : 'border-black bg-ms text-white');
+    return $l === 'error' ? 'border-[#E2A9AE] bg-dangerbg text-danger' : ($l === 'warning' ? 'border-line2 bg-white text-ink' : 'border-line2 bg-ms text-white');
 }
 
 app_start(t('Logs'), 'logs', $user);
@@ -59,9 +59,9 @@ page_title(t('Logs')); ?>
 
 <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 mb-6">
   <?php foreach ([
-      [t('Errors, 24 h'), $sum['error'], '/logs.php?level=error&period=86400', $sum['error'] ? 'text-red-800' : 'text-ms'],
+      [t('Errors, 24 h'), $sum['error'], '/logs.php?level=error&period=86400', $sum['error'] ? 'text-danger' : 'text-ms'],
       [t('Warnings, 24 h'), $sum['warning'], '/logs.php?level=warning&period=86400', 'text-ms'],
-      [t('Sources failing now'), count($failing), '#failing', count($failing) ? 'text-red-800' : 'text-ms'],
+      [t('Sources failing now'), count($failing), '#failing', count($failing) ? 'text-danger' : 'text-ms'],
       [t('New articles, 24 h'), $sum['new'], '/logs.php?level=info&period=86400', 'text-ms'],
   ] as [$l, $n, $href, $c]): ?>
     <a href="<?= e($href) ?>" class="<?= ui('card') ?> p-5 block hover:-translate-y-0.5 transition">
@@ -76,8 +76,8 @@ page_title(t('Logs')); ?>
   <h2 class="font-bold mb-3"><?= e(t('Sources failing right now')) ?></h2>
   <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
     <?php foreach ($failing as $f): ?>
-      <a href="/logs.php?source=<?= (int)$f['id'] ?>&level=problems&period=2592000" class="block rounded-lg border border-red-700 bg-red-50 px-3 py-2 hover:shadow-md transition">
-        <div class="flex justify-between gap-2"><span class="font-bold text-red-900 truncate"><?= e($f['name']) ?></span><span class="text-xs font-bold text-red-900 shrink-0">×<?= (int)$f['consecutive_errors'] ?></span></div>
+      <a href="/logs.php?source=<?= (int)$f['id'] ?>&level=problems&period=2592000" class="block rounded-[10px] border border-[#E2A9AE] bg-dangerbg px-3 py-2 hover:shadow-md transition">
+        <div class="flex justify-between gap-2"><span class="font-bold text-danger truncate"><?= e($f['name']) ?></span><span class="text-xs font-bold text-danger shrink-0">×<?= (int)$f['consecutive_errors'] ?></span></div>
         <div class="text-sm font-medium break-words"><?= e(mb_strimwidth((string)$f['last_error'], 0, 90, '…')) ?></div>
       </a>
     <?php endforeach; ?>
@@ -96,17 +96,17 @@ page_title(t('Logs')); ?>
 <div class="flex flex-wrap items-center gap-2 mb-3">
   <span class="text-sm font-semibold"><?= e(t('Sort')) ?>:</span>
   <?php foreach (['time' => 'Time', 'source' => 'Source', 'event' => 'Event'] as $k => $l): $on = $st['key'] === $k; $nd = $on && $st['dir'] === 'asc' ? 'desc' : 'asc'; ?>
-    <a href="<?= e(qs(['sort' => $k, 'dir' => $nd, 'page' => null])) ?>" class="<?= ui('chip') ?> <?= $on ? 'bg-ms text-white' : 'bg-white text-black' ?>"><?= e(t($l)) ?><?= $on ? ($st['dir'] === 'asc' ? ' ▲' : ' ▼') : '' ?></a>
+    <a href="<?= e(qs(['sort' => $k, 'dir' => $nd, 'page' => null])) ?>" class="<?= ui('chip') ?> <?= $on ? 'bg-ms text-white' : 'bg-white text-ink' ?>"><?= e(t($l)) ?><?= $on ? ($st['dir'] === 'asc' ? ' ▲' : ' ▼') : '' ?></a>
   <?php endforeach; ?>
 </div>
 
 <?php if (!$rows): ?>
   <div class="<?= ui('card') ?> p-8 text-center font-semibold"><?= e(t('Nothing here. No entries match these filters.')) ?></div>
 <?php else: ?>
-  <div class="<?= ui('card') ?> overflow-hidden divide-y divide-black/10">
+  <div class="<?= ui('card') ?> overflow-hidden divide-y divide-line">
   <?php foreach ($rows as $l): ?>
     <details class="group" <?= $open === (int)$l['id'] ? 'open' : '' ?>>
-      <summary class="cursor-pointer list-none px-4 py-3 hover:bg-ms-light/60 flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+      <summary class="cursor-pointer list-none px-4 py-3 hover:bg-surface flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
         <div class="flex items-center gap-2 md:w-72 shrink-0">
           <span class="<?= ui('chip') ?> <?= lvl_cls($l['level']) ?> uppercase"><?= e($l['level']) ?></span>
           <span class="text-sm font-semibold" title="<?= e(fmt_dt($l['created_at'])) ?>"><?= e(ago($l['created_at'])) ?></span>
@@ -123,10 +123,10 @@ page_title(t('Logs')); ?>
             <div class="font-medium break-words"><?= e($l['message']) ?></div>
             <?php if ($l['details']): ?>
               <div class="text-xs font-bold uppercase mt-3 mb-1"><?= e(t('Details')) ?></div>
-              <pre class="whitespace-pre-wrap break-words rounded-lg border border-black bg-white p-3 text-xs font-medium"><?= e($l['details']) ?></pre>
+              <pre class="whitespace-pre-wrap break-words rounded-[10px] border border-line2 bg-white p-3 text-xs font-medium"><?= e($l['details']) ?></pre>
             <?php endif; ?>
           </div>
-          <dl class="rounded-lg border border-black bg-white p-3 text-sm self-start">
+          <dl class="rounded-[10px] border border-line2 bg-white p-3 text-sm self-start">
             <?php foreach ([[t('Time'), fmt_dt($l['created_at'])], ['HTTP', $l['http_code'] ?: '—'], [t('Duration'), $l['duration_ms'] !== null ? $l['duration_ms'] . ' ms' : '—'], [t('New articles'), (string)$l['new_articles']]] as [$k, $v]): ?>
               <div class="flex justify-between gap-3 py-1"><dt class="font-semibold"><?= e($k) ?></dt><dd class="font-bold"><?= e((string)$v) ?></dd></div>
             <?php endforeach; ?>
