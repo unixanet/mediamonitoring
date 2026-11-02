@@ -190,7 +190,13 @@ class PagesMixin:
         inserted = n == 1
         if inserted and ok:
             await self.journal_add([newid])
-        await self.db.run("UPDATE url_queue SET status=%s, attempts=%s, last_error=NULL WHERE id=%s", ("done" if inserted else "skipped", att, qid))
+        why_skip = None
+        if not inserted:                     # не молчим: причина видна в очереди и в журнале
+            ex_row = await self.db.one("SELECT id FROM articles WHERE source_id = %s AND dedup_hash = UNHEX(%s)", (sid, dh))
+            why_skip = f"Already saved as article #{ex_row['id']}" if ex_row else "The database rejected the article row"
+            if not ex_row:
+                await self.log(sid, "error", "insert_rejected", http, 0, 0, why_skip, f"URL: {url}\nTitle: {page_title[:200]}\nPublished: {ts_to_db(ts)}\nText length: {len(ex['text'])}")
+        await self.db.run("UPDATE url_queue SET status=%s, attempts=%s, last_error=%s WHERE id=%s", ("done" if inserted else "skipped", att, why_skip, qid))
         if inserted:
             await self.db.run("UPDATE sources SET articles_count = articles_count + 1, unfinished_count = unfinished_count + %s, last_article_at = NOW() WHERE id = %s", (0 if ok else 1, sid))
             st["inserted"] += 1
