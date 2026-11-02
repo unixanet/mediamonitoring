@@ -7,7 +7,7 @@ import time
 from . import config
 from .extract import extract_article
 from .fetcher import classify
-from .util import clean_url, db_to_ts, decode_body, dedup_key, host_of, md5hex, ts_to_db
+from .util import clean_url, db_to_ts, decode_body, dedup_key, dup_keys, host_of, md5hex, ts_to_db
 
 log = logging.getLogger("pages")
 
@@ -129,6 +129,15 @@ class PagesMixin:
             have = (job["content"] or "").strip()
             text = ex["text"] if len(ex["text"]) > len(have) else job["content"]       # со страницы взяли больше, чем было в ленте
             ch = md5hex(job["title"] + "\n" + text)
+            hh2, th2 = dup_keys(orig, job["title"])
+            other = await self.find_dup(hh2, th2, text, exclude_id=aid)
+            if other and other < aid:                       # ровно такая статья на этом сайте уже есть: этот дубль убираем
+                await self.journal_add([aid], "delete")
+                await self.db.run("DELETE FROM article_raw WHERE article_id = %s", (aid,))
+                await self.db.run("DELETE FROM articles WHERE id = %s", (aid,))
+                await self.db.run("UPDATE sources SET articles_count = GREATEST(articles_count - 1, 0), unfinished_count = GREATEST(unfinished_count - 1, 0) WHERE id = %s", (sid,))
+                await self.log(sid, "info", "duplicate_removed", http, 0, 0, f"Duplicate of article #{other} on the same site, removed", f"URL: {url}")
+                return
             await self.db.run(
                 "UPDATE articles SET content=%s, content_hash=UNHEX(%s), content_status='full', fail_reason=NULL, next_retry_at=NULL, fetch_attempts=%s, "
                 "feed_link = IF(%s <> url, COALESCE(feed_link, url), feed_link), url = %s WHERE id = %s", (text, ch, att, orig, orig, aid))
@@ -182,18 +191,23 @@ class PagesMixin:
         item = {"url": url, "guid": url, "title": page_title, "ts": ts, "content": ex["text"]}
         dh = md5hex(dedup_key(src.get("dedup_by") or "url", item))
         ok = not reason
+        hh, th = dup_keys(orig, page_title)
+        other = await self.find_dup(hh, th, ex["text"])
+        if other:                                          # та же статья на этом сайте уже есть (даже под другой ссылкой или из другого источника)
+            await self.db.run("UPDATE url_queue SET status='skipped', attempts=%s, last_error=%s WHERE id=%s", (att, f"Duplicate: already stored for this site as article #{other}", qid))
+            return
         n, newid = await self.db.run(
-            "INSERT IGNORE INTO articles (source_id, dedup_hash, url, feed_link, title, content, published_at, content_hash, content_status, fetch_attempts, next_retry_at, fail_reason, journal_at) "
-            "VALUES (%s, UNHEX(%s), %s, %s, %s, %s, %s, UNHEX(%s), %s, %s, %s, %s, %s)",
-            (sid, dh, orig[:2048], url[:2048] if orig != url else None, page_title[:1000], ex["text"][:500000], ts_to_db(ts), md5hex(page_title + "\n" + ex["text"]),
+            "INSERT IGNORE INTO articles (source_id, dedup_hash, host_hash, title_hash, url, feed_link, title, content, published_at, content_hash, content_status, fetch_attempts, next_retry_at, fail_reason, journal_at) "
+            "VALUES (%s, UNHEX(%s), UNHEX(%s), UNHEX(%s), %s, %s, %s, %s, %s, UNHEX(%s), %s, %s, %s, %s, %s)",
+            (sid, dh, hh, th, orig[:2048], url[:2048] if orig != url else None, page_title[:1000], ex["text"][:500000], ts_to_db(ts), md5hex(page_title + "\n" + ex["text"]),
              "full" if ok else "pending", 0 if ok else 1, None if ok else ts_to_db(time.time() + ft_delay(1)), None if ok else reason[:255], ts_to_db(time.time()) if ok else None))
         inserted = n == 1
         if inserted and ok:
             await self.journal_add([newid])
         why_skip = None
         if not inserted:                     # не молчим: причина видна в очереди и в журнале
-            ex_row = await self.db.one("SELECT id FROM articles WHERE source_id = %s AND dedup_hash = UNHEX(%s)", (sid, dh))
-            why_skip = f"Already saved as article #{ex_row['id']}" if ex_row else "The database rejected the article row"
+            ex_row = await self.db.one("SELECT id FROM articles WHERE (source_id = %s AND dedup_hash = UNHEX(%s)) OR (host_hash = UNHEX(%s) AND title_hash = UNHEX(%s)) LIMIT 1", (sid, dh, hh, th))
+            why_skip = f"Duplicate: this article is already stored for this site as article #{ex_row['id']}" if ex_row else "The database rejected the article row"
             if not ex_row:
                 await self.log(sid, "error", "insert_rejected", http, 0, 0, why_skip, f"URL: {url}\nTitle: {page_title[:200]}\nPublished: {ts_to_db(ts)}\nText length: {len(ex['text'])}")
         await self.db.run("UPDATE url_queue SET status=%s, attempts=%s, last_error=%s WHERE id=%s", ("done" if inserted else "skipped", att, why_skip, qid))
@@ -218,10 +232,15 @@ class PagesMixin:
         url = job["url"][:2048]
         dh = md5hex(dedup_key(src.get("dedup_by") or "url", {"url": url, "guid": url, "title": title, "ts": ts, "content": ""}))
         pending = status == "pending"
+        hh, th = dup_keys(url, title)
+        other = await self.find_dup(hh, th, "")
+        if other:
+            await self.db.run("UPDATE url_queue SET status='skipped', last_error=%s WHERE id=%s", (f"Duplicate: already stored for this site as article #{other}", qid))
+            return False
         n, newid = await self.db.run(
-            "INSERT IGNORE INTO articles (source_id, dedup_hash, url, title, content, published_at, content_hash, content_status, fetch_attempts, next_retry_at, fail_reason, journal_at) "
-            "VALUES (%s, UNHEX(%s), %s, %s, '', %s, UNHEX(%s), %s, %s, %s, %s, %s)",
-            (sid, dh, url, title, ts_to_db(ts), md5hex(title + "\n"), status, attempts, ts_to_db(time.time() + ft_delay(1)) if pending else None, reason[:255], None if pending else ts_to_db(time.time())))
+            "INSERT IGNORE INTO articles (source_id, dedup_hash, host_hash, title_hash, url, title, content, published_at, content_hash, content_status, fetch_attempts, next_retry_at, fail_reason, journal_at) "
+            "VALUES (%s, UNHEX(%s), UNHEX(%s), UNHEX(%s), %s, %s, '', %s, UNHEX(%s), %s, %s, %s, %s, %s)",
+            (sid, dh, hh, th, url, title, ts_to_db(ts), md5hex(title + "\n"), status, attempts, ts_to_db(time.time() + ft_delay(1)) if pending else None, reason[:255], None if pending else ts_to_db(time.time())))
         inserted = n == 1
         await self.db.run("UPDATE url_queue SET status=%s, attempts = attempts + 1, last_error=%s WHERE id=%s", ("done" if inserted else "skipped", reason[:255] or None, qid))
         if inserted:

@@ -18,7 +18,7 @@ from .robots import Robots
 from .telegram import parse_page as tg_parse_page
 from .maint import MaintMixin
 from .pages import PagesMixin
-from .util import db_to_ts, decode_body, dedup_key, md5hex, norm_url, time_hint, ts_to_db
+from .util import db_to_ts, decode_body, dedup_key, dup_keys, md5hex, norm_url, same_content, time_hint, ts_to_db
 
 log = logging.getLogger("core")
 MAINT_SQL_RAW_DAYS = config.RAW_DAYS
@@ -76,6 +76,14 @@ class Engine(PagesMixin, MaintMixin):
         for i in range(0, len(ids), 500):
             chunk = ids[i:i + 500]
             await self.db.run("INSERT INTO article_changes (article_id, op) VALUES " + ",".join(["(%s, %s)"] * len(chunk)), [x for a in chunk for x in (a, op)])
+
+    async def find_dup(self, hh, th, content, exclude_id=0):
+        """id уже сохранённой статьи, если на ЭТОМ сайте есть статья с тем же заголовком и тем же текстом (1 в 1). Иначе None."""
+        rows = await self.db.all("SELECT id, content FROM articles WHERE host_hash = UNHEX(%s) AND title_hash = UNHEX(%s) AND id <> %s ORDER BY id LIMIT 10", (hh, th, int(exclude_id)))
+        for r in rows:
+            if same_content(r["content"] or "", content or ""):
+                return r["id"]
+        return None
 
     async def journal_touch(self, aid):
         await self.db.run("UPDATE articles SET journal_at = COALESCE(journal_at, NOW()) WHERE id = %s", (aid,))
@@ -206,7 +214,7 @@ class Engine(PagesMixin, MaintMixin):
                 changed = (ex["title"] != title) if need_full else (ex["ch"] != ch)
                 if changed:
                     if need_full:
-                        await self.db.run("UPDATE articles SET title=%s, revision = revision + 1, updated_at = NOW() WHERE id=%s", (title, ex["id"]))
+                        await self.db.run("UPDATE IGNORE articles SET title=%s, title_hash=UNHEX(%s), revision = revision + 1, updated_at = NOW() WHERE id=%s", (title, dup_keys(i["url"] or "", title)[1], ex["id"]))
                     else:
                         await self.db.run("UPDATE articles SET title=%s, content=%s, content_hash=UNHEX(%s), revision = revision + 1, updated_at = NOW() WHERE id=%s", (title, content, ch, ex["id"]))
                     journal.append(ex["id"])
@@ -216,10 +224,14 @@ class Engine(PagesMixin, MaintMixin):
             url = (i["url"] or "")[:2048]
             nf = need_full and url != ""
             now = ts_to_db(time.time())
+            hh, th = dup_keys(url, title)
+            if await self.find_dup(hh, th, content):           # та же статья (заголовок и текст) на том же сайте уже есть: второй раз не сохраняем
+                res["dup"] += 1
+                continue
             n, aid = await self.db.run(
-                "INSERT IGNORE INTO articles (source_id, dedup_hash, url, title, content, published_at, content_hash, content_status, next_retry_at, journal_at) "
-                "VALUES (%s, UNHEX(%s), %s, %s, %s, %s, UNHEX(%s), %s, %s, %s)",
-                (sid, i["dh"], url, title, content, ts_to_db(i["ts"]), ch, "pending" if nf else "full", now if nf else None, None if nf else now))
+                "INSERT IGNORE INTO articles (source_id, dedup_hash, host_hash, title_hash, url, title, content, published_at, content_hash, content_status, next_retry_at, journal_at) "
+                "VALUES (%s, UNHEX(%s), UNHEX(%s), UNHEX(%s), %s, %s, %s, %s, UNHEX(%s), %s, %s, %s)",
+                (sid, i["dh"], hh, th, url, title, content, ts_to_db(i["ts"]), ch, "pending" if nf else "full", now if nf else None, None if nf else now))
             if n == 1:
                 st["new"] += 1
                 st["unfinished"] += 1 if nf else 0

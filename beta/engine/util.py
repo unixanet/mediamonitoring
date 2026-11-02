@@ -61,6 +61,34 @@ def host_of(u: str) -> str:
     return re.sub(r"^www\.", "", (urlparse(u).hostname or "").lower())
 
 
+_SOCIAL = {"t.me", "telegram.me", "facebook.com", "m.facebook.com", "fb.com", "instagram.com", "twitter.com", "x.com", "youtube.com"}
+
+
+def site_key(u: str) -> str:
+    """Что считать одним «сайтом» для дубликатов: домен без www; в соцсетях ещё и канал или страница."""
+    p = urlparse(u or "")
+    h = re.sub(r"^www\.", "", (p.hostname or "").lower())
+    if h in _SOCIAL:
+        seg = next((x for x in p.path.split("/") if x and x != "s"), "")
+        return h + "/" + seg.lower()
+    return h
+
+
+def dup_keys(url: str, title: str) -> "tuple[str, str]":
+    """(hex хеша сайта, hex хеша заголовка). Одинаковая пара в articles = та же статья на том же сайте, в какой бы день ни вышла."""
+    return md5hex(site_key(url)), md5hex(norm_text(title))
+
+
+def same_content(a: str, b: str) -> bool:
+    """Тот же текст? Равные после нормализации, либо более короткий (анонс из ленты) целиком входит в более длинный.
+    Пустой текст (только заголовок) считается совпадающим: при одинаковом заголовке на сайте это та же статья."""
+    na, nb = norm_text(a), norm_text(b)
+    if not na or not nb or na == nb:
+        return True
+    short, long_ = (na, nb) if len(na) <= len(nb) else (nb, na)
+    return len(short) >= 30 and short[:300] in long_
+
+
 def norm_text(s: str) -> str:
     return re.sub(r"[\W_]+", "", (s or "").lower(), flags=re.UNICODE)
 
