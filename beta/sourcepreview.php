@@ -9,7 +9,7 @@ if (!csrf_ok() || !filter_var($url, FILTER_VALIDATE_URL) || !preg_match('#^https
     echo json_encode(['ok' => false, 'error' => 'Enter a valid article URL']);
     exit;
 }
-set_time_limit(60);
+set_time_limit(50);
 $r = engine_call('/extract-test', [
     'url' => $url, 'tz' => (string)($_POST['feed_timezone'] ?? 'Asia/Yerevan'),
     'sel_title' => trim((string)($_POST['sel_title'] ?? '')), 'sel_body' => trim((string)($_POST['sel_body'] ?? '')),

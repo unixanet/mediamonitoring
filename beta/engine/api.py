@@ -1,4 +1,5 @@
 """Локальный программный интерфейс для PHP-админки (только 127.0.0.1)."""
+import asyncio
 import json
 import logging
 
@@ -29,11 +30,18 @@ def make_app(engine) -> web.Application:
     async def health(request):
         return jr(await engine.health())
 
+    detect_gate = asyncio.Semaphore(3)
+
     @routes.post("/detect")
     async def detect_ep(request):
         d = await body(request)
         method = d.get("method") if d.get("method") in ("auto", "http", "browser") else "auto"
-        return jr(await detect(engine, d.get("input", ""), method, "bot" if d.get("profile") == "bot" else "browser", d.get("tz") or "Asia/Yerevan"))
+        # не больше 3 проверок одновременно и не дольше 40 секунд: форма добавления источника не должна забивать сервер
+        try:
+            async with detect_gate:
+                return jr(await asyncio.wait_for(detect(engine, d.get("input", ""), method, "bot" if d.get("profile") == "bot" else "browser", d.get("tz") or "Asia/Yerevan"), 40))
+        except asyncio.TimeoutError:
+            return jr({"ok": False, "error": "The site did not answer in time. Try again or choose the real browser method in More settings.", "can_try_browser": True, "candidates": []})
 
     @routes.post("/source/{id}/fetch")
     async def fetch_now(request):
