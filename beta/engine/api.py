@@ -43,27 +43,52 @@ def make_app(engine) -> web.Application:
         except asyncio.TimeoutError:
             return jr({"ok": False, "error": "The site did not answer in time. Try again or choose the real browser method in More settings.", "can_try_browser": True, "candidates": []})
 
+    jobs = {}          # ключ -> фоновая задача (не запускаем одно и то же дважды)
+
+    async def run_bg(key, coro_fn, wait):
+        """Запустить работу в фоне и подождать не больше wait секунд. Не успела: вернуть {running: true}, работа идёт дальше сама."""
+        t = jobs.get(key)
+        if t is None or t.done():
+            t = jobs[key] = asyncio.create_task(coro_fn())
+            t.add_done_callback(lambda x: x.exception() and log.error("background job %s failed: %r", key, x.exception()))
+        try:
+            return await asyncio.wait_for(asyncio.shield(t), max(1, wait))
+        except asyncio.TimeoutError:
+            return {"ok": True, "running": True}
+        except Exception as ex:
+            return {"ok": False, "error": f"Engine error: {ex}"}
+
     @routes.post("/source/{id}/fetch")
     async def fetch_now(request):
-        """Fetch now / Start / первый забег: опросить источник и сразу открыть ожидающие страницы."""
+        """Fetch now / Start / первый забег. Идёт в фоне; ответ не дольше wait секунд (по умолчанию 20)."""
         sid = int(request.match_info["id"])
+        d = await body(request)
         src = await engine.db.one("SELECT * FROM sources WHERE id = %s", (sid,))
         if not src:
             return jr({"ok": False, "error": "Source not found."}, 404)
-        res = await engine.process_source(src, force=True)
-        if res["ok"] and src.get("fetch_full_text"):
-            res["ft"] = await engine.process_pending(sid, 20)
-        return jr(res)
+
+        async def work():
+            res = await engine.process_source(src, force=True)
+            if res["ok"] and src.get("fetch_full_text"):
+                res["ft"] = await engine.process_pending(sid, 20)
+            return res
+        return jr(await run_bg(("fetch", sid), work, int(d.get("wait", 20))))
 
     @routes.post("/source/{id}/retry")
     async def retry(request):
         sid = int(request.match_info["id"])
-        n = await engine.reset_source(sid)
-        return jr({"ok": True, "reset": n, "ft": await engine.process_pending(sid, 20)})
+        d = await body(request)
+
+        async def work():
+            n = await engine.reset_source(sid)
+            return {"ok": True, "reset": n, "ft": await engine.process_pending(sid, 20)}
+        return jr(await run_bg(("retry", sid), work, int(d.get("wait", 20))))
 
     @routes.post("/article/{id}/retry")
     async def retry_article(request):
-        return jr(await engine.retry_article(int(request.match_info["id"])))
+        aid = int(request.match_info["id"])
+        d = await body(request)
+        return jr(await run_bg(("article", aid), lambda: engine.retry_article(aid), int(d.get("wait", 20))))
 
     @routes.post("/extract-test")
     async def extract_test(request):

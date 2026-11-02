@@ -143,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sid = $id ?: (int)cdb()->insert_id;
             if (!$id && $s['is_active']) {      // первый забег сразу после добавления
                 $r = cdb()->query("SELECT * FROM sources WHERE id = $sid");
-                [$ft, $fm] = crawl_flash(engine_call('/source/' . $sid . '/fetch', [], 150), $s['name']);
+                [$ft, $fm] = crawl_flash(engine_call('/source/' . $sid . '/fetch', ['wait' => 20], 30), $s['name']);
                 flash_set($ft, 'Source added. ' . $fm);
             } else {
                 flash_set('ok', $id ? 'Source saved.' : 'Source added.');

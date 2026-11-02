@@ -24,11 +24,12 @@ function engine_call(string $path, array $data = [], int $timeout = 120, bool $r
         CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => json_encode($data, JSON_UNESCAPED_UNICODE)]);
     $body = curl_exec($ch);
     $err = curl_error($ch);
+    $timedOut = curl_errno($ch) === 28;
     curl_close($ch);
     if ($had && $reopen && !headers_sent()) @session_start();
     $j = $body !== false ? json_decode((string)$body, true) : null;
     if (!is_array($j)) {
-        return ['ok' => false, 'error' => 'The engine is not running (' . ($err ?: 'bad response') . '). On the server: sudo systemctl start mmengine', 'engine_down' => true];
+        return ['ok' => false, 'error' => ($timedOut ? 'The engine is busy and did not answer in time.' : 'The engine is not running (' . ($err ?: 'bad response') . '). On the server: sudo systemctl start mmengine'), 'engine_down' => !$timedOut];
     }
     return $j;
 }
@@ -46,6 +47,9 @@ function crawl_flash(array $r, string $name): array
 {
     if (empty($r['ok'])) {
         return ['err', $name . ': fetch failed. ' . ($r['error'] ?? 'unknown error')];
+    }
+    if (!empty($r['running'])) {
+        return ['ok', $name . ': the first fetch is running in the background. The articles appear in a minute or two, refresh the page.'];
     }
     if (!empty($r['queued'])) {
         $m = sprintf('%s: %d new article URLs found.', $name, $r['queued']);

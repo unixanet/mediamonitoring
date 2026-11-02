@@ -10,7 +10,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok() && ($_POST['act'] ?? '') 
         if ($a['content_status'] === 'full') {
             flash_set('ok', 'This article already has the full text.');
         } else {
-            $r = engine_call('/article/' . $id . '/retry', [], 90);
+            $r = engine_call('/article/' . $id . '/retry', ['wait' => 20], 30);
+            if (!empty($r['running'])) $r = ['full' => 0, 'last_error' => 'still running in the background, refresh in a minute'];
             flash_set(!empty($r['full']) ? 'ok' : 'err', !empty($r['full']) ? 'Full text downloaded.' : 'Still no full text: ' . ($r['last_error'] ?? $r['error'] ?? 'unknown reason'));
         }
     }
