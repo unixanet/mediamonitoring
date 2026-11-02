@@ -260,15 +260,21 @@ class Engine(PagesMixin, MaintMixin):
             failure = await self.sm_scan(src, cfg, cur, force, ctx, state)
             if failure:
                 break
+            prev = state.setdefault("prev", {}).get(str(i))        # прошлая карта: ещё сутки досматриваем её хвост
+            if prev and prev[0] != cur and time.time() - prev[1] < 86400:
+                await self.sm_scan(src, cfg, prev[0], force, ctx, state)
             m = re.search(r"(\d+)(\.xml(?:\.gz)?)$", cur, re.I)
-            if cfg.get("probe_next") and m and (force or time.time() - int(state["last_probe"].get(str(i), 0)) >= 600):
+            # карта с номером в имени (post-sitemap89.xml): когда она заполнится, сайт создаст следующую. Ищем 90, 91... сами.
+            if cfg.get("probe_next", True) and m and (force or time.time() - int(state["last_probe"].get(str(i), 0)) >= 600):
                 state["last_probe"][str(i)] = int(time.time())
-                for _ in range(3):                    # post-sitemap89.xml -> 90, до трёх шагов подряд
+                for _ in range(3):
                     nxt = re.sub(r"(\d+)(\.xml(?:\.gz)?)$", lambda mm: str(int(mm.group(1)) + 1) + mm.group(2), cur, flags=re.I)
                     before, saved = ctx["maps_ok"], ctx["http"]
                     ctx_probe = await self.sm_scan(src, cfg, nxt, True, ctx, state)
                     if ctx_probe is None and ctx["maps_ok"] > before:
+                        state["prev"][str(i)] = [cur, int(time.time())]
                         state["cur"][str(i)] = cur = nxt
+                        await self.log(src["id"], "info", "sitemap_next", ctx["http"], 0, 0, f"New sitemap found, switching to {nxt}")
                     else:
                         ctx["http"] = saved
                         break
@@ -282,6 +288,11 @@ class Engine(PagesMixin, MaintMixin):
             await self.log(src["id"], "info", "sitemap_queued", res["http"], res["ms"], 0,
                            f"{ctx['queued']} new article URLs found in sitemap ({ctx['feed']} entries checked, {ctx['old']} older than start date)")
         return res
+
+    @staticmethod
+    def _num(u):
+        m = re.search(r"(\d+)(?:\.xml(?:\.gz)?)?/?$", u.split("?")[0], re.I)
+        return int(m.group(1)) if m else 0
 
     async def sm_scan(self, src, cfg, url, force, ctx, state, depth=0):
         """Одна карта: индекс → самые свежие дочерние; urlset → новые ссылки в очередь. None = ок, иначе (event, message, details)."""
@@ -305,7 +316,7 @@ class Engine(PagesMixin, MaintMixin):
         if kind == "index":
             if depth >= 2:
                 return None
-            entries.sort(key=lambda e: e["ts"] or 0, reverse=True)
+            entries.sort(key=lambda e: (e["ts"] or 0, self._num(e["loc"])), reverse=True)    # свежее по lastmod, а без него по номеру в имени
             taken = 0
             for e in entries:
                 if cfg.get("map_include") and not self._match(e["loc"], cfg["map_include"]):

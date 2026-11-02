@@ -9,9 +9,9 @@ $dedupModes = ['url' => 'By article URL', 'guid' => 'By feed GUID', 'title' => '
 
 $s = ['name' => '', 'type' => 'rss', 'feed_url' => '', 'dedup_by' => 'url', 'category_id' => null,
       'start_mode' => 'all', 'start_date' => '', 'check_interval_sec' => 120, 'is_active' => 1,
-      'fetch_profile' => 'browser', 'fetch_method' => 'auto', 'respect_robots' => 1, 'proxy_url' => '', 'fetch_full_text' => 0, 'feed_timezone' => 'Asia/Yerevan', 'interval_mode' => 'fixed'];
+      'fetch_profile' => 'browser', 'fetch_method' => 'auto', 'respect_robots' => 1, 'proxy_url' => '', 'fetch_full_text' => 1, 'feed_timezone' => 'Asia/Yerevan', 'interval_mode' => 'fixed'];
 $timezones = ['Asia/Yerevan' => 'Yerevan (UTC+4)', 'UTC' => 'UTC', 'Europe/Moscow' => 'Moscow (UTC+3)', 'Asia/Tbilisi' => 'Tbilisi (UTC+4)', 'Europe/Istanbul' => 'Istanbul (UTC+3)', 'Europe/Kyiv' => 'Kyiv', 'Europe/London' => 'London', 'Europe/Paris' => 'Paris / Berlin', 'America/New_York' => 'New York'];
-$xs = ['list_container' => '', 'list_pattern' => '', 'history_pages' => 5, 'urls_extra' => '', 'probe_next' => 0, 'map_include' => '', 'url_include' => '', 'url_exclude' => '', 'sel_title' => '', 'sel_body' => ''];
+$xs = ['list_container' => '', 'list_pattern' => '', 'history_pages' => 5, 'urls_extra' => '', 'probe_next' => 1, 'map_include' => '', 'url_include' => '', 'url_exclude' => '', 'sel_title' => '', 'sel_body' => ''];
 
 if ($id) {
     $r = cdb()->query("SELECT * FROM sources WHERE id = $id LIMIT 1");
@@ -329,7 +329,7 @@ $types = ['rss' => ['RSS feed', 'Any news site feed'], 'sitemap' => ['Sitemap', 
       </div>
     </div>
     <label class="flex items-start gap-3 rounded-[10px] border border-line2 px-4 py-2.5 text-sm font-medium cursor-pointer"><input type="checkbox" name="respect_robots" value="1" <?= $s['respect_robots'] ? 'checked' : '' ?> class="mt-0.5 h-4 w-4 accent-[#0078D4]"><span><?= e(t('Respect robots.txt')) ?><span class="block text-xs text-muted font-normal"><?= e(t('Pages the site closed in robots.txt are not opened. The article keeps its title and the reason is written to the log.')) ?></span></span></label>
-    <label id="ftWrap" class="flex items-start gap-3 rounded-[10px] border border-line2 px-4 py-2.5 text-sm font-medium cursor-pointer"><input type="checkbox" name="fetch_full_text" value="1" <?= $s['fetch_full_text'] ? 'checked' : '' ?> class="mt-0.5 h-4 w-4 accent-[#0078D4]"><span><?= e(t('Open article pages to get the full text')) ?><span class="block text-xs text-muted font-normal"><?= e(t('RSS: only if the feed has just short descriptions')) ?></span></span></label>
+    <label id="ftWrap" class="flex items-start gap-3 rounded-[10px] border border-line2 px-4 py-2.5 text-sm font-medium cursor-pointer"><input type="checkbox" name="fetch_full_text" value="1" <?= $s['fetch_full_text'] ? 'checked' : '' ?> class="mt-0.5 h-4 w-4 accent-[#0078D4]"><span><?= e(t('Open article pages to get the full text')) ?><span class="block text-xs text-muted font-normal"><?= e(t('Recommended: many feeds give only a short description. The page text is used when it is longer')) ?></span></span></label>
     <details class="rounded-xl border border-line px-4 py-3">
       <summary class="cursor-pointer text-sm font-semibold"><?= e(t('Article page selectors and extraction test (optional)')) ?></summary>
       <p class="mt-2 text-[13px] text-muted"><?= e(t('Leave empty: title, date and text are detected automatically. If a site is detected wrongly, set CSS selectors (tag, #id, .class, spaces).')) ?></p>

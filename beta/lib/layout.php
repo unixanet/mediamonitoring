@@ -63,7 +63,7 @@ function browser_status(): ?array
     if ($c && time() - $c[0] < 20) {
         return $c[1];
     }
-    $ch = curl_init(CRAWL_BROWSER_URL . '/health');
+    $ch = curl_init(ENGINE_API . '/health');
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 1, CURLOPT_CONNECTTIMEOUT => 1]);
     $r = curl_exec($ch);
     $j = $r ? json_decode($r, true) : null;
