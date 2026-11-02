@@ -4,6 +4,7 @@ import logging
 import os
 import signal
 import socket
+import warnings
 
 from aiohttp import web
 
@@ -11,6 +12,7 @@ from . import config
 from .api import make_app
 from .core import Engine
 
+warnings.filterwarnings("ignore", module="aiomysql")     # INSERT IGNORE на дублях сыпет предупреждения в журнал службы
 log = logging.getLogger("main")
 POLL_TYPES = "'rss','sitemap','listing','telegram','facebook'"
 
