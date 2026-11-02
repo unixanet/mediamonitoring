@@ -1,0 +1,8 @@
+{
+  "db": {"host": "localhost", "name": "crawler", "user": "crawler", "password": "u]~6.!KW23gG1`4-"},
+  "api_port": 8765,
+  "browser": {"profile": "/var/lib/mmengine/profile", "pages": 3, "executable": null, "headless": false},
+  "poll_concurrency": 20,
+  "page_concurrency": 8,
+  "log_level": "INFO"
+}

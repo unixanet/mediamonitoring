@@ -3,7 +3,7 @@
 // Без --run только показывает план. Таблицы articles и article_raw уходят в БД crawler_archive (articles_ГГГГ),
 // рабочие таблицы создаются пустыми (id продолжаются), последние 7 дней копируются обратно, чтобы дедуп не дал дублей.
 if (PHP_SAPI !== 'cli') exit('CLI only');
-require __DIR__ . '/../lib/crawler.php';
+require __DIR__ . '/../lib/engineapi.php';
 $cfg = require __DIR__ . '/../config.php';
 $year = (int)($argv[1] ?? 0);
 $run = in_array('--run', $argv, true);

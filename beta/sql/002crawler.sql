@@ -60,7 +60,8 @@ CREATE TABLE IF NOT EXISTS articles (
   id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   source_id    INT UNSIGNED NOT NULL,
   dedup_hash   BINARY(16) NOT NULL,
-  url          VARCHAR(2048) NOT NULL,        -- ОРИГИНАЛЬНАЯ ссылка на статью (для отчётов и кнопки Open original)
+  url          VARCHAR(2048) NOT NULL,        -- ОРИГИНАЛЬНАЯ ссылка на статью: canonical со страницы или адрес после перенаправлений (для отчётов и кнопки Open original)
+  feed_link    VARCHAR(2048) NULL,            -- ссылка так, как её отдал источник (лента, карта, список), если отличается от url
   title        VARCHAR(1000) NOT NULL,
   content      MEDIUMTEXT NOT NULL,
   published_at DATETIME NOT NULL,

@@ -1,0 +1,9 @@
+aiohttp
+aiomysql
+curl_cffi
+feedparser
+python-dateutil
+cssselect
+lxml
+trafilatura
+playwright

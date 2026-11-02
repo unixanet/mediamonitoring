@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!filter_var($eu, FILTER_VALIDATE_URL) || !preg_match('#^https?://#i', $eu)) $errors[] = 'Additional sitemap URLs must be valid http(s) links.';
     }
     foreach (['sel_title', 'sel_body'] as $sk) {
-        if ($xs[$sk] !== '' && ft_css_to_xpath($xs[$sk]) === null) $errors[] = 'Selector not supported (use tag, #id, .class and spaces): ' . $xs[$sk];
+        if ($xs[$sk] !== '' && !css_ok($xs[$sk])) $errors[] = 'Selector not supported (use tag, #id, .class and spaces): ' . $xs[$sk];
     }
     $extraJson = json_encode($extraArr, JSON_UNESCAPED_UNICODE);
     $s['feed_timezone'] = isset($timezones[$_POST['feed_timezone'] ?? '']) ? $_POST['feed_timezone'] : 'Asia/Yerevan';
@@ -100,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($xs['list_pattern'] === '' || @preg_match('~' . str_replace('~', '\~', $xs['list_pattern']) . '~u', '') === false) {
             $errors[] = 'The page list needs a link pattern. Paste the address and pick the "Page list" result on the right.';
         }
-        if ($xs['list_container'] !== '' && ft_css_to_xpath($xs['list_container']) === null) $errors[] = 'List container selector is not supported (use tag, #id, .class and spaces).';
+        if ($xs['list_container'] !== '' && !css_ok($xs['list_container'])) $errors[] = 'List container selector is not supported (use tag, #id, .class and spaces).';
         $s['fetch_full_text'] = 1;
     } elseif ($s['type'] === 'facebook') {
         if (preg_match('#^(https?://)?([\w.-]+\.)?(facebook|fb)\.com#i', $s['feed_url']) || !preg_match('#^https?://#i', $s['feed_url'])) {
@@ -139,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sid = $id ?: (int)cdb()->insert_id;
             if (!$id && $s['is_active']) {      // первый забег сразу после добавления
                 $r = cdb()->query("SELECT * FROM sources WHERE id = $sid");
-                [$ft, $fm] = crawl_flash(crawl_source_sync(cdb(), $r->fetch_assoc()), $s['name']);
+                [$ft, $fm] = crawl_flash(engine_call('/source/' . $sid . '/fetch', [], 150), $s['name']);
                 flash_set($ft, 'Source added. ' . $fm);
             } else {
                 flash_set('ok', $id ? 'Source saved.' : 'Source added.');

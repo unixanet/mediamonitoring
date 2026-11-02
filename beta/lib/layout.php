@@ -74,14 +74,11 @@ function browser_status(): ?array
 function status_pill(): string
 {
     $c = crawler_status(cdb());
-    $workers = 0;
-    $r = cdb()->query("SELECT COUNT(*) FROM crawler_status WHERE role = 'fulltext' AND heartbeat_at > NOW() - INTERVAL 30 SECOND");
-    if ($r) $workers = (int)$r->fetch_row()[0];
     if (!$c['online']) {
         return '<a href="/health.php" class="hidden sm:flex items-center gap-2 h-8 px-3 rounded-full bg-dangerbg text-danger text-[13px] font-semibold"><span class="h-2 w-2 rounded-full bg-danger"></span>' . e(t('Crawler offline')) . '</a>';
     }
     return '<a href="/health.php" class="hidden sm:flex items-center gap-2 h-8 px-3 rounded-full bg-ms-light text-[#0B4F94] text-[13px] font-semibold"><span class="h-2 w-2 rounded-full bg-ms"></span>'
-        . e(t('Crawler running')) . ' · ' . ($workers + 1) . ' ' . e(t('processes')) . '</a>';
+        . e(t('Engine running')) . '</a>';
 }
 
 function app_start(string $title, string $active, array $user): void
@@ -196,6 +193,6 @@ function crawler_banner(): void
     $c = crawler_status(cdb());
     if (!$c['online']) {
         echo '<div class="mb-5 rounded-xl border border-[#E2A9AE] bg-dangerbg text-danger px-4 py-3 text-sm font-semibold">'
-            . e(t('Crawler is offline. Scheduled fetching is stopped. “Fetch now” still works. Start it on the server: sudo systemctl start mmcrawler')) . '</div>';
+            . e(t('Crawler is offline. Scheduled fetching is stopped. “Fetch now” still works. Start it on the server: sudo systemctl start mmengine')) . '</div>';
     }
 }
