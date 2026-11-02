@@ -64,8 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $s['dedup_by'] = isset($dedupModes[$_POST['dedup_by'] ?? '']) ? $_POST['dedup_by'] : 'url';
     $s['check_interval_sec'] = isset($intervals[(int)($_POST['check_interval_sec'] ?? 0)]) ? (int)$_POST['check_interval_sec'] : 120;
     $s['is_active'] = isset($_POST['is_active']) ? 1 : 0;
-    $s['start_mode'] = in_array($_POST['start_mode'] ?? '', ['all', 'new', 'date'], true) ? $_POST['start_mode'] : 'all';
     $s['start_date'] = trim((string)($_POST['start_date'] ?? ''));
+    $s['start_mode'] = isset($_POST['only_new']) ? 'new' : ($s['start_date'] !== '' ? 'date' : 'all');
     $catId = (int)($_POST['category_id'] ?? 0);
     $s['category_id'] = isset($cats[$catId]) ? $catId : null;
     $newCat = trim((string)($_POST['new_category'] ?? ''));
@@ -213,22 +213,18 @@ $types = ['rss' => ['RSS feed', 'Any news site feed'], 'sitemap' => ['Sitemap', 
       </div>
       <?php endif; ?>
     </div>
-    <div>
-      <div class="<?= $lbl ?>"><?= e(t('Which articles to download')) ?></div>
-      <div class="grid gap-2.5 sm:grid-cols-3">
-        <?php foreach (['all' => 'Everything in the feed', 'new' => 'Only new, from now', 'date' => 'Published from a date'] as $v => $l): ?>
-          <label class="flex items-center gap-3 rounded-[10px] border border-line2 px-4 py-2.5 text-sm font-medium cursor-pointer has-[:checked]:border-ms has-[:checked]:bg-ms-light has-[:checked]:text-[#0B4F94]">
-            <input type="radio" name="start_mode" value="<?= $v ?>" <?= $s['start_mode'] === $v ? 'checked' : '' ?> class="h-4 w-4 accent-[#0078D4]"><?= e(t($l)) ?>
-          </label>
-        <?php endforeach; ?>
+    <div class="grid gap-5 sm:grid-cols-2">
+      <div>
+        <label class="<?= $lbl ?>" for="start_date"><?= e(t('Download articles published from')) ?></label>
+        <input id="start_date" name="start_date" type="date" value="<?= e($s['start_date']) ?>" class="<?= $inp ?>">
+        <p class="mt-1.5 text-xs text-muted"><?= e(t('Leave empty to download everything the source has. Older articles are skipped.')) ?></p>
+        <label class="mt-2 flex items-center gap-2.5 text-[13px] font-medium cursor-pointer"><input type="checkbox" name="only_new" value="1" <?= $s['start_mode'] === 'new' ? 'checked' : '' ?> class="h-4 w-4 accent-[#0078D4]"><?= e(t('Only new articles from now')) ?></label>
       </div>
-      <div id="dateWrap" class="mt-3 max-w-xs <?= $s['start_mode'] === 'date' ? '' : 'hidden' ?>"><input name="start_date" type="date" value="<?= e($s['start_date']) ?>" class="<?= $inp ?>"></div>
-      <p class="mt-2 text-[13px] text-muted"><?= e(t('An RSS feed only contains the latest items (usually 10-100). Older articles are not available through RSS.')) ?></p>
-    </div>
-    <div>
-      <label class="<?= $lbl ?>" for="url_exclude"><?= e(t('Skip URLs containing')) ?></label>
-      <input id="url_exclude" name="url_exclude" value="<?= e($xs['url_exclude']) ?>" placeholder="/ru/, /video/" class="<?= $inp ?>">
-      <p class="mt-1.5 text-xs text-muted"><?= e(t('Optional. Articles whose address contains any of these parts are not downloaded. Separate with commas.')) ?></p>
+      <div>
+        <label class="<?= $lbl ?>" for="url_exclude"><?= e(t('Skip URLs containing')) ?></label>
+        <input id="url_exclude" name="url_exclude" value="<?= e($xs['url_exclude']) ?>" placeholder="/ru/, /video/" class="<?= $inp ?>">
+        <p class="mt-1.5 text-xs text-muted"><?= e(t('Optional. Articles whose address contains any of these parts are not downloaded. Separate with commas.')) ?></p>
+      </div>
     </div>
   </section>
 
