@@ -47,6 +47,7 @@ class Browser:
         self.challenges = 0
         self.solved = 0
         self.errors = 0
+        self.warm = {}     # host -> время последнего «захода на главную»
 
     async def start(self):
         self.pw = await async_playwright().start()
@@ -128,6 +129,27 @@ class Browser:
                 await self.human_click_turnstile(page)
         return False
 
+    async def warm_up(self, page, url, deadline):
+        """Как живой посетитель: сначала главная страница сайта, пауза, лёгкая прокрутка; потом нужный адрес."""
+        from urllib.parse import urlparse
+        u = urlparse(url)
+        host = u.netloc
+        if not host or time.time() - self.warm.get(host, 0) < 1200 or (u.path in ("", "/") and not u.query):
+            return None
+        self.warm[host] = time.time()
+        origin = f"{u.scheme}://{host}/"
+        try:
+            await page.goto(origin, wait_until="domcontentloaded", timeout=max(8000, int((deadline - time.time()) * 400)))
+            if await self.is_challenge(page, None):
+                await self.solve_challenge(page, min(deadline - 10, time.time() + 25))
+            await asyncio.sleep(1.0 + random.random() * 1.5)
+            await page.mouse.move(300 + random.random() * 400, 200 + random.random() * 200, steps=10)
+            await page.mouse.wheel(0, 400 + random.random() * 500)
+            await asyncio.sleep(0.6 + random.random())
+            return origin
+        except Exception:
+            return None
+
     async def fetch(self, url, timeout):
         await self.recycle_if_needed()
         async with self.sem:
@@ -137,7 +159,8 @@ class Browser:
             page = await self.ctx.new_page()
             try:
                 await asyncio.sleep(0.2 + random.random() * 0.6)          # человеческая пауза
-                resp = await page.goto(url, wait_until="domcontentloaded", timeout=timeout * 1000)
+                ref = await self.warm_up(page, url, deadline)
+                resp = await page.goto(url, wait_until="domcontentloaded", timeout=max(8000, int((deadline - time.time()) * 1000)), referer=ref)
                 challenged = await self.is_challenge(page, resp)
                 if challenged:
                     self.challenges += 1
