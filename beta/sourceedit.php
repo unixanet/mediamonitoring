@@ -183,7 +183,7 @@ $types = ['rss' => ['RSS feed', 'Any news site feed'], 'sitemap' => ['Sitemap', 
       <div>
         <label class="<?= $lbl ?>" for="category_id"><?= e(t('Category')) ?></label>
         <select id="category_id" name="category_id" class="<?= $inp ?>">
-          <option value="0">— <?= e(t('No category')) ?> —</option>
+          <option value="0"><?= e(t('No category')) ?></option>
           <?php foreach ($cats as $cid => $cn): ?><option value="<?= $cid ?>" <?= (int)$s['category_id'] === $cid ? 'selected' : '' ?>><?= e($cn) ?></option><?php endforeach; ?>
         </select>
       </div>
@@ -245,7 +245,7 @@ $types = ['rss' => ['RSS feed', 'Any news site feed'], 'sitemap' => ['Sitemap', 
         <?php endforeach; ?>
       </div>
       <div id="dateWrap" class="mt-3 max-w-xs <?= $s['start_mode'] === 'date' ? '' : 'hidden' ?>"><input name="start_date" type="date" value="<?= e($s['start_date']) ?>" class="<?= $inp ?>"></div>
-      <p class="mt-2 text-[13px] text-muted"><?= e(t('An RSS feed only contains the latest items (usually 10–100). Older articles are not available through RSS.')) ?></p>
+      <p class="mt-2 text-[13px] text-muted"><?= e(t('An RSS feed only contains the latest items (usually 10-100). Older articles are not available through RSS.')) ?></p>
     </div>
     <div id="tgHist" class="hidden">
       <label class="<?= $lbl ?>" for="history_pages"><?= e(t('History to download on the first fetch')) ?></label>
@@ -352,7 +352,7 @@ async function probe() {
   ['csrf', 'type', 'feed_url', 'fetch_profile', 'feed_timezone', 'urls_extra', 'map_include', 'url_include', 'url_exclude'].forEach(k => { const el = f.elements[k]; if (el) fd.append(k, k === 'type' ? curType() : el.value); });
   fd.append('fetch_method', forceMethod);
   try {
-    const r = await (await fetch('/source_probe.php', { method: 'POST', body: fd, signal: ctl.signal })).json();
+    const r = await (await fetch('/sourceprobe.php', { method: 'POST', body: fd, signal: ctl.signal })).json();
     clearInterval(tick); $('urlSpin').classList.add('hidden');
     if (r.idle) { show('pvIdle'); return; }
     if (!r.ok) {
@@ -387,7 +387,7 @@ $('pv_btn').onclick = async () => {
   ['csrf', 'sel_title', 'sel_body', 'fetch_profile', 'feed_timezone'].forEach(k => fd.append(k, f.elements[k].value));
   fd.append('url', $('pv_url').value); out.classList.remove('hidden'); out.textContent = '…';
   try {
-    const r = await (await fetch('/source_preview.php', { method: 'POST', body: fd })).json();
+    const r = await (await fetch('/sourcepreview.php', { method: 'POST', body: fd })).json();
     out.innerHTML = r.ok ? '<div class="font-semibold">' + r.title + '</div><div class="text-xs text-muted mt-0.5">' + r.date + ' · ' + r.length + ' chars</div><div class="mt-2 whitespace-pre-line">' + r.text + '</div>' : '<span class="font-semibold text-danger">' + r.error + '</span>';
   } catch (e) { out.textContent = 'Request failed'; }
 };

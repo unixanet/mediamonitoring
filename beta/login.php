@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Wrong username or password.';
     }
 }
-page_head('Sign in — Media Monitoring Admin');
+page_head('Sign in: Media Monitoring Admin');
 ?>
 <body class="min-h-screen bg-white text-ink font-sans antialiased">
 <div class="min-h-screen lg:grid lg:grid-cols-2">

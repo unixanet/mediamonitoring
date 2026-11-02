@@ -1,5 +1,5 @@
 <?php
-// Годовая архивация: php ops/archive_year.php 2026 [--run]
+// Годовая архивация: php ops/archiveyear.php 2026 [--run]
 // Без --run только показывает план. Таблицы articles и article_raw уходят в БД crawler_archive (articles_ГГГГ),
 // рабочие таблицы создаются пустыми (id продолжаются), последние 7 дней копируются обратно, чтобы дедуп не дал дублей.
 if (PHP_SAPI !== 'cli') exit('CLI only');
@@ -7,7 +7,7 @@ require __DIR__ . '/../lib/crawler.php';
 $cfg = require __DIR__ . '/../config.php';
 $year = (int)($argv[1] ?? 0);
 $run = in_array('--run', $argv, true);
-if ($year < 2020 || $year > 2100) exit("Usage: php ops/archive_year.php YEAR [--run]\n");
+if ($year < 2020 || $year > 2100) exit("Usage: php ops/archiveyear.php YEAR [--run]\n");
 
 $db = crawler_connect($cfg['crawler_db']);
 $arch = 'crawler_archive';

@@ -1,4 +1,4 @@
--- 001_admin.sql: БД nebuchadnezzar (админка). Полная структура.
+-- 001admin.sql: БД nebuchadnezzar (админка). Полная структура.
 SET NAMES utf8mb4;
 
 CREATE TABLE IF NOT EXISTS admin_users (

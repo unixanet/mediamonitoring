@@ -20,7 +20,7 @@ from aiohttp import web
 from playwright.async_api import async_playwright
 
 PORT = int(os.environ.get("MM_BROWSER_PORT", "8765"))
-PROFILE = os.environ.get("MM_BROWSER_PROFILE", "/var/lib/mm-browser/profile")
+PROFILE = os.environ.get("MM_BROWSER_PROFILE", "/var/lib/mmbrowser/profile")
 MAX_PAGES = int(os.environ.get("MM_BROWSER_PAGES", "3"))
 HEADLESS = os.environ.get("MM_BROWSER_HEADLESS", "0") == "1"
 EXE = os.environ.get("MM_BROWSER_EXE") or None                       # путь к chrome, если не стандартный

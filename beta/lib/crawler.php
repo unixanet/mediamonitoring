@@ -370,7 +370,7 @@ function crawl_failure(array $src, string $url, $ch, stdClass $st, int $errno): 
         . "\nHTTP: " . $http . "\nContent-Type: " . curl_getinfo($ch, CURLINFO_CONTENT_TYPE) . "\nDuration: " . $ms . ' ms';
     if (!empty($st->via_browser)) {
         if ($errno === 7 || $errno === 28) {
-            return ['browser_down', 'The browser service is not running or did not answer. On the server: sudo systemctl start mm-browser', $details];
+            return ['browser_down', 'The browser service is not running or did not answer. On the server: sudo systemctl start mmbrowser', $details];
         }
         if (!empty($st->berr) && !$errno) {
             return ['browser_error', 'Browser: ' . $st->berr, $details];

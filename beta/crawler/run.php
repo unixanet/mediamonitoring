@@ -1,5 +1,5 @@
 <?php
-// Опрос лент и sitemap + обслуживание. Запуск: php crawler/run.php (systemd: mm-crawler)
+// Опрос лент и sitemap + обслуживание. Запуск: php crawler/run.php (systemd: mmcrawler)
 if (PHP_SAPI !== 'cli') {
     exit('CLI only');
 }

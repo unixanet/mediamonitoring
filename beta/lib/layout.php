@@ -40,7 +40,7 @@ function nav_sections(): array
             ['sources', '/sources.php', 'Sources', 'sources.view', $ic['list']],
             ['categories', '/categories.php', 'Categories', 'categories.view', $ic['tag']],
             ['articles', '/articles.php', 'Articles', 'articles.view', $ic['doc']],
-            $editor ? ['source_add', '/source_edit.php', 'Add source', 'source.add', $ic['plus']] : null,
+            $editor ? ['source_add', '/sourceedit.php', 'Add source', 'source.add', $ic['plus']] : null,
             $editor ? ['search', '/search.php', 'Search', 'search', $ic['search']] : null,
         ]))],
         ['Operations', [['health', '/health.php', 'Engine', 'logs.view', $ic['pulse']], ['logs', '/logs.php', 'Logs', 'logs.view', $ic['log'], true]]],
@@ -86,7 +86,7 @@ function status_pill(): string
 
 function app_start(string $title, string $active, array $user): void
 {
-    page_head($title . ' — Media Monitoring Admin');
+    page_head($title . ': Media Monitoring Admin');
     $initial = e(strtoupper(mb_substr($user['username'], 0, 1)));
     $errs = 0;
     if (can('logs.view') && ($r = cdb()->query("SELECT COUNT(*) FROM crawl_log WHERE level='error' AND created_at > NOW() - INTERVAL 24 HOUR"))) {
@@ -132,7 +132,7 @@ function app_start(string $title, string $active, array $user): void
       <div class="flex-1"></div>
       <?php if (can('logs.view')) echo status_pill(); ?>
       <?php if (can('source.add') && can('sources.view')): ?>
-        <a href="/source_edit.php" class="<?= ui('btn') ?> hidden sm:inline-flex"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><?= e(t('Add source')) ?></a>
+        <a href="/sourceedit.php" class="<?= ui('btn') ?> hidden sm:inline-flex"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><?= e(t('Add source')) ?></a>
       <?php endif; ?>
     </header>
     <main class="flex-1 px-4 sm:px-8 py-6 sm:py-7">
@@ -149,7 +149,7 @@ function app_end(): void
 
 <?php // нижняя панель на телефоне
 $tabs = [['/', 'Home', 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', 'dashboard'], ['/sources.php', 'Sources', 'M4 6h16M4 12h16M4 18h10', 'sources.view'],
-         ['/source_edit.php', 'Add', 'M12 5v14M5 12h14', 'source.add'], ['/search.php', 'Search', 'M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z', 'search'],
+         ['/sourceedit.php', 'Add', 'M12 5v14M5 12h14', 'source.add'], ['/search.php', 'Search', 'M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z', 'search'],
          ['/health.php', 'Engine', 'M3 12h4l3-8 4 16 3-8h4', 'logs.view']];
 ?>
 <nav aria-label="Primary" class="lg:hidden fixed bottom-0 inset-x-0 z-20 bg-white border-t border-line flex px-1.5 pt-1.5 pb-2.5">
@@ -196,6 +196,6 @@ function crawler_banner(): void
     $c = crawler_status(cdb());
     if (!$c['online']) {
         echo '<div class="mb-5 rounded-xl border border-[#E2A9AE] bg-dangerbg text-danger px-4 py-3 text-sm font-semibold">'
-            . e(t('Crawler is offline. Scheduled fetching is stopped. “Fetch now” still works. Start it on the server: sudo systemctl start mm-crawler')) . '</div>';
+            . e(t('Crawler is offline. Scheduled fetching is stopped. “Fetch now” still works. Start it on the server: sudo systemctl start mmcrawler')) . '</div>';
     }
 }

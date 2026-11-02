@@ -11,7 +11,7 @@ while ($r && ($x = $r->fetch_assoc())) {
 }
 
 app_start(t('Users'), 'users', $user);
-page_title(t('Users'), '<a href="/user_edit.php" class="' . ui('btn') . '">+ ' . e(t('Add user')) . '</a>');
+page_title(t('Users'), '<a href="/useredit.php" class="' . ui('btn') . '">+ ' . e(t('Add user')) . '</a>');
 mobile_sort(['username' => 'Username', 'role' => 'Role', 'last_login' => 'Last login'], $st); ?>
 <div class="<?= ui('card') ?> overflow-hidden hidden md:block">
   <table class="w-full">
@@ -31,7 +31,7 @@ mobile_sort(['username' => 'Username', 'role' => 'Role', 'last_login' => 'Last l
         <td class="<?= ui('td') ?>"><span class="<?= ui('chip') ?> <?= $u['is_active'] ? '' : 'bg-black text-white' ?>"><?= e(t($u['is_active'] ? 'Active' : 'Disabled')) ?></span></td>
         <td class="<?= ui('td') ?> font-medium"><?= e(fmt_dt($u['last_login_at'])) ?></td>
         <td class="<?= ui('td') ?> font-medium"><?= e(fmt_dt($u['created_at'])) ?></td>
-        <td class="<?= ui('td') ?> text-right"><a class="<?= ui('btn2') ?> !px-3 !py-1.5" href="/user_edit.php?id=<?= (int)$u['id'] ?>"><?= e(t('Edit')) ?></a></td>
+        <td class="<?= ui('td') ?> text-right"><a class="<?= ui('btn2') ?> !px-3 !py-1.5" href="/useredit.php?id=<?= (int)$u['id'] ?>"><?= e(t('Edit')) ?></a></td>
       </tr>
     <?php endforeach; ?>
     </tbody>
@@ -39,7 +39,7 @@ mobile_sort(['username' => 'Username', 'role' => 'Role', 'last_login' => 'Last l
 </div>
 <div class="md:hidden space-y-3">
   <?php foreach ($rows as $u): ?>
-    <a href="/user_edit.php?id=<?= (int)$u['id'] ?>" class="<?= ui('card') ?> block p-4">
+    <a href="/useredit.php?id=<?= (int)$u['id'] ?>" class="<?= ui('card') ?> block p-4">
       <div class="flex items-center justify-between gap-2">
         <span class="font-bold"><?= e($u['username']) ?></span>
         <span class="<?= ui('chip') ?> <?= $u['role'] === 'admin' ? 'bg-ms text-white' : '' ?>"><?= e(t(ucfirst($u['role']))) ?></span>

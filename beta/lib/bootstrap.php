@@ -69,7 +69,7 @@ function flash_get(): ?array
 function fmt_dt(?string $utc): string
 {
     if (!$utc) {
-        return '—';
+        return '-';
     }
     $d = new DateTime($utc, new DateTimeZone('UTC'));
     $d->setTimezone(new DateTimeZone(UI_TZ));

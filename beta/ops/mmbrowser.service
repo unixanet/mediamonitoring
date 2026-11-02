@@ -1,0 +1,14 @@
+[Unit]
+Description=Media Monitoring real browser service (Playwright, Chromium under Xvfb)
+After=network-online.target
+[Service]
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+Environment=MM_BROWSER_PROFILE=/var/lib/mmbrowser/profile
+Environment=MM_BROWSER_PAGES=3
+ExecStart=/usr/bin/xvfb-run -a /usr/bin/python3 /var/www/beta_mediamo_usr/data/www/beta.mediamonitoring.am/browser/server.py
+Restart=always
+RestartSec=5
+Nice=10
+MemoryMax=3G
+[Install]
+WantedBy=multi-user.target

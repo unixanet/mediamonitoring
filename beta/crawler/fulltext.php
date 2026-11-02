@@ -1,5 +1,5 @@
 <?php
-// Воркер полного текста: открывает страницы статей. Запуск: php crawler/fulltext.php <номер> (systemd: mm-fulltext@1, @2)
+// Воркер полного текста: открывает страницы статей. Запуск: php crawler/fulltext.php <номер> (systemd: mmfulltext@1, @2)
 if (PHP_SAPI !== 'cli') {
     exit('CLI only');
 }

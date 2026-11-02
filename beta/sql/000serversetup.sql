@@ -1,4 +1,4 @@
--- 000_server_setup.sql: запускать от root (mysql < файл). Создаёт БД и пользователей.
+-- 000serversetup.sql: запускать от root (mysql < файл). Создаёт БД и пользователей.
 CREATE DATABASE IF NOT EXISTS nebuchadnezzar  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS crawler         CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS crawler_archive CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

@@ -112,7 +112,7 @@ crawler_banner(); ?>
         <?php
         kv(t('Last check'), e(ago($s['last_checked_at'])));
         kv(t('Last new article'), e(ago($s['last_article_at'])));
-        kv(t('HTTP / response'), e($s['last_http_code'] ? (string)$s['last_http_code'] : '—') . ' · ' . e($s['last_response_ms'] !== null ? $s['last_response_ms'] . ' ms' : '—'));
+        kv(t('HTTP / response'), e($s['last_http_code'] ? (string)$s['last_http_code'] : '-') . ' · ' . e($s['last_response_ms'] !== null ? $s['last_response_ms'] . ' ms' : '-'));
         kv(t('Errors in a row'), (int)$s['consecutive_errors'] > 0 ? '<span class="text-danger">' . (int)$s['consecutive_errors'] . '</span>' : '0');
         ?>
       </dl>
@@ -123,7 +123,7 @@ crawler_banner(); ?>
       <div class="mt-3 h-2 rounded-full bg-ms-light overflow-hidden"><div class="h-full bg-ms" style="width:<?= $pct ?>%"></div></div>
       <div class="mt-2.5 text-[13px] text-muted"><?= number_format($ftc['full']) ?> <?= e(t('complete')) ?> · <?= number_format($bad + $ftc['pending'] + $qp) ?> <?= e(t('not complete')) ?><?= $qf ? ' · ' . number_format($qf) . ' ' . e(t('pages failed')) : '' ?></div>
       <?php if ($bad || $qf || $ftc['pending']): ?>
-        <form method="post" action="/source_action.php" class="mt-3"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>"><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="back" value="detail">
+        <form method="post" action="/sourceaction.php" class="mt-3"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>"><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="back" value="detail">
           <button name="act" value="retry" class="<?= ui('btn2') ?> w-full !h-9"><?= e(t('Retry incomplete articles')) ?></button></form>
         <?php if ($bad): ?><a href="/articles.php?source=<?= $id ?>&status=unfinished" class="<?= ui('link') ?> mt-2 inline-block text-[13px]"><?= e(t('Show incomplete articles')) ?> →</a><?php endif; ?>
       <?php endif; ?>
@@ -144,10 +144,10 @@ crawler_banner(); ?>
     <?php endif; ?>
 
     <section class="<?= ui('card') ?> p-5">
-      <div class="flex items-center justify-between mb-1"><h2 class="text-[15px] font-semibold"><?= e(t('Settings')) ?></h2><a href="/source_edit.php?id=<?= $id ?>" class="<?= ui('link') ?> text-[13px]"><?= e(t('Edit')) ?></a></div>
+      <div class="flex items-center justify-between mb-1"><h2 class="text-[15px] font-semibold"><?= e(t('Settings')) ?></h2><a href="/sourceedit.php?id=<?= $id ?>" class="<?= ui('link') ?> text-[13px]"><?= e(t('Edit')) ?></a></div>
       <dl>
         <?php
-        kv(t('Category'), $s['category'] ? e($s['category']) : '—');
+        kv(t('Category'), $s['category'] ? e($s['category']) : '-');
         kv(t('How to fetch'), e(t($method)));
         kv(t('Check interval'), e(((int)$s['check_interval_sec'] / 60) . ' ' . t('min')) . ($s['interval_mode'] === 'auto' ? ' · ' . e(t('auto')) . ($s['auto_interval_sec'] ? ' (' . round($s['auto_interval_sec'] / 60, 1) . ' ' . e(t('min')) . ')' : '') : ''));
         kv(t('Articles from'), $s['min_published_at'] ? e(fmt_dt($s['min_published_at'])) : e(t('Everything in the feed')));
@@ -170,7 +170,7 @@ if (mb) {
   mb.onclick = async () => {
     mb.disabled = true;
     try {
-      const r = await (await fetch('/source_articles.php?id=<?= $id ?>&offset=' + off)).json();
+      const r = await (await fetch('/sourcearticles.php?id=<?= $id ?>&offset=' + off)).json();
       document.getElementById('artList').insertAdjacentHTML('beforeend', r.html);
       off += 20;
       if (!r.more) document.getElementById('moreWrap').classList.add('hidden');

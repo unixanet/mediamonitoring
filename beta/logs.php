@@ -127,7 +127,7 @@ page_title(t('Logs')); ?>
             <?php endif; ?>
           </div>
           <dl class="rounded-[10px] border border-line2 bg-white p-3 text-sm self-start">
-            <?php foreach ([[t('Time'), fmt_dt($l['created_at'])], ['HTTP', $l['http_code'] ?: '—'], [t('Duration'), $l['duration_ms'] !== null ? $l['duration_ms'] . ' ms' : '—'], [t('New articles'), (string)$l['new_articles']]] as [$k, $v]): ?>
+            <?php foreach ([[t('Time'), fmt_dt($l['created_at'])], ['HTTP', $l['http_code'] ?: '-'], [t('Duration'), $l['duration_ms'] !== null ? $l['duration_ms'] . ' ms' : '-'], [t('New articles'), (string)$l['new_articles']]] as [$k, $v]): ?>
               <div class="flex justify-between gap-3 py-1"><dt class="font-semibold"><?= e($k) ?></dt><dd class="font-bold"><?= e((string)$v) ?></dd></div>
             <?php endforeach; ?>
             <?php if ($l['source_name'] !== '(deleted)'): ?>

@@ -181,7 +181,7 @@ function status_chip(string $status): string
 
 function until(?string $utc): string
 {
-    if (!$utc) return '—';
+    if (!$utc) return '-';
     $s = (new DateTime($utc, new DateTimeZone('UTC')))->getTimestamp() - time();
     if ($s <= 0) return t('due now');
     if ($s < 60) return t('in') . ' ' . $s . ' ' . t('sec');
@@ -211,15 +211,15 @@ function src_actions(array $s, string $back = 'list'): void
     ];
     $cls = fn(string $k) => ui($k) . ($compact ? ' !h-9 !w-9 !px-0' : '');
     $f = fn(string $act, string $k, string $icon, string $label) =>
-        '<form method="post" action="/source_action.php">'
+        '<form method="post" action="/sourceaction.php">'
         . '<input type="hidden" name="csrf" value="' . e(csrf()) . '"><input type="hidden" name="id" value="' . $id . '"><input type="hidden" name="back" value="' . $back . '">'
         . '<button name="act" value="' . $act . '" title="' . e($label) . '" aria-label="' . e($label) . '" class="' . $cls($k) . '">' . $ico[$icon] . ($compact ? '' : e($label)) . '</button></form>';
     echo '<div class="flex flex-wrap gap-2 ' . ($compact ? 'flex-nowrap' : '') . '">';
     echo $s['is_active'] ? $f('fetch', 'btn', 'play', t('Fetch now')) : $f('start', 'btn', 'play', t('Start'));
     if ($s['is_active']) echo $f('pause', 'btn2', 'pause', t('Pause'));
-    echo '<a class="' . $cls('btn2') . '" href="/source_edit.php?id=' . $id . '" title="' . e(t('Edit')) . '" aria-label="' . e(t('Edit')) . '">' . $ico['edit'] . ($compact ? '' : e(t('Edit'))) . '</a>';
+    echo '<a class="' . $cls('btn2') . '" href="/sourceedit.php?id=' . $id . '" title="' . e(t('Edit')) . '" aria-label="' . e(t('Edit')) . '">' . $ico['edit'] . ($compact ? '' : e(t('Edit'))) . '</a>';
     echo '<button type="button" onclick="document.getElementById(\'del' . $id . '\').showModal()" title="' . e(t('Delete')) . '" aria-label="' . e(t('Delete')) . '" class="' . $cls('btnd') . '">' . $ico['trash'] . ($compact ? '' : e(t('Delete'))) . '</button>';
-    echo '<dialog id="del' . $id . '" class="rounded-[14px] border border-line p-0 shadow-2xl backdrop:bg-ink/50 w-[min(92vw,28rem)]"><form method="post" action="/source_action.php" class="p-6 space-y-3">'
+    echo '<dialog id="del' . $id . '" class="rounded-[14px] border border-line p-0 shadow-2xl backdrop:bg-ink/50 w-[min(92vw,28rem)]"><form method="post" action="/sourceaction.php" class="p-6 space-y-3">'
         . '<input type="hidden" name="csrf" value="' . e(csrf()) . '"><input type="hidden" name="id" value="' . $id . '"><input type="hidden" name="back" value="' . $back . '">'
         . '<h3 class="text-lg font-bold">' . e(t('Delete source')) . ' “' . e($s['name']) . '”</h3>'
         . '<p class="text-sm text-muted">' . e(t('Choose what to delete. This cannot be undone.')) . '</p>'

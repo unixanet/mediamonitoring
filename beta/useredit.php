@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $u['is_active'] = isset($_POST['is_active']) ? 1 : 0;
         $pw = (string)($_POST['password'] ?? '');
 
-        if (!preg_match('/^[A-Za-z0-9._-]{3,64}$/', $u['username'])) $errors[] = 'Username: 3–64 characters, letters, digits, dot, dash, underscore.';
+        if (!preg_match('/^[A-Za-z0-9._-]{3,64}$/', $u['username'])) $errors[] = 'Username: 3-64 characters, letters, digits, dot, dash, underscore.';
         if (($pw !== '' || !$id) && ($e = validate_password($pw))) $errors[] = $e;
         if ($id && ($u['role'] !== 'admin' || !$u['is_active']) && active_admin_count($id) === 0) {
             $errors[] = 'At least one active administrator is required.';
@@ -86,8 +86,8 @@ if ($errors): ?>
   <div>
     <label class="<?= ui('lbl') ?>" for="role"><?= e(t('Role')) ?></label>
     <select id="role" name="role" class="<?= ui('inp') ?>">
-      <option value="editor" <?= $u['role'] === 'editor' ? 'selected' : '' ?>><?= e(t('Editor')) ?> — <?= e(t('add sources, search, own password')) ?></option>
-      <option value="admin" <?= $u['role'] === 'admin' ? 'selected' : '' ?>><?= e(t('Admin')) ?> — <?= e(t('full access')) ?></option>
+      <option value="editor" <?= $u['role'] === 'editor' ? 'selected' : '' ?>><?= e(t('Editor')) ?>: <?= e(t('add sources, search, own password')) ?></option>
+      <option value="admin" <?= $u['role'] === 'admin' ? 'selected' : '' ?>><?= e(t('Admin')) ?>: <?= e(t('full access')) ?></option>
     </select>
   </div>
   <div>

@@ -1,4 +1,4 @@
--- 002_crawler.sql: БД crawler. Полная структура (все прежние черновики свёрнуты сюда). Все даты в UTC.
+-- 002crawler.sql: БД crawler. Полная структура (все прежние черновики свёрнуты сюда). Все даты в UTC.
 SET NAMES utf8mb4;
 
 CREATE TABLE IF NOT EXISTS categories (

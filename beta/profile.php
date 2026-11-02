@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (can('users.manage')) {
             $username = trim((string)($_POST['username'] ?? ''));
             if (!preg_match('/^[A-Za-z0-9._-]{3,64}$/', $username)) {
-                $errors[] = 'Username: 3–64 characters, letters, digits, dot, dash, underscore.';
+                $errors[] = 'Username: 3-64 characters, letters, digits, dot, dash, underscore.';
             }
         }
         if ($new !== '') {

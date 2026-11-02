@@ -18,7 +18,7 @@ if (!$a) {
 <?php
 $ref = (string)($_SERVER['HTTP_REFERER'] ?? '');
 $rp = parse_url($ref);
-$back = ($rp && ($rp['host'] ?? '') === explode(':', $_SERVER['HTTP_HOST'] ?? '')[0] && !preg_match('#/(article|article_action|login)\.php#', $rp['path'] ?? ''))
+$back = ($rp && ($rp['host'] ?? '') === explode(':', $_SERVER['HTTP_HOST'] ?? '')[0] && !preg_match('#/(article|articleaction|login)\.php#', $rp['path'] ?? ''))
     ? ($rp['path'] ?? '/') . (isset($rp['query']) ? '?' . $rp['query'] : '')
     : (can('articles.view') ? '/articles.php?source=' . (int)$a['source_id'] : '/search.php');
 ?>
@@ -39,7 +39,7 @@ $back = ($rp && ($rp['host'] ?? '') === explode(':', $_SERVER['HTTP_HOST'] ?? ''
       <?php if ($a['fail_reason']): ?><div class="font-medium"><?= e(t('Reason')) ?>: <?= e($a['fail_reason']) ?> (<?= (int)$a['fetch_attempts'] ?> <?= e(t('attempts')) ?>)</div><?php endif; ?>
       <?php if ($a['content_status'] === 'pending' && $a['next_retry_at']): ?><div class="font-medium"><?= e(t('Next attempt')) ?>: <?= e(until($a['next_retry_at'])) ?></div><?php endif; ?>
       <?php if (can('sources.view')): ?>
-      <form method="post" action="/article_action.php" class="mt-2"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+      <form method="post" action="/articleaction.php" class="mt-2"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
         <button name="act" value="retry" class="<?= ui('btn') ?> !py-1.5"><?= e(t('Retry full text now')) ?></button></form>
       <?php endif; ?>
     </div>
