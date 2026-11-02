@@ -14,7 +14,7 @@ $r = engine_call('/extract-test', [
     'url' => $url, 'tz' => (string)($_POST['feed_timezone'] ?? 'Asia/Yerevan'),
     'sel_title' => trim((string)($_POST['sel_title'] ?? '')), 'sel_body' => trim((string)($_POST['sel_body'] ?? '')),
     'profile' => ($_POST['fetch_profile'] ?? '') === 'bot' ? 'bot' : 'browser', 'method' => (string)($_POST['fetch_method'] ?? 'auto'),
-], 55);
+], 55, false);
 foreach (['error', 'title', 'text', 'date', 'extractor', 'original_url'] as $k) {
     if (isset($r[$k])) $r[$k] = htmlspecialchars((string)$r[$k], ENT_QUOTES, 'UTF-8');
 }

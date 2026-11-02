@@ -14,14 +14,18 @@ function crawler_connect(array $c): mysqli
 }
 
 // Вызов API движка. Возвращает массив ответа или ['ok'=>false,'error'=>...]
-function engine_call(string $path, array $data = [], int $timeout = 120): array
+function engine_call(string $path, array $data = [], int $timeout = 120, bool $reopen = true): array
 {
+    // Долгий вызов не должен держать блокировку сессии: иначе остальные страницы админки ждут (дашборд «не грузится»)
+    $had = session_status() === PHP_SESSION_ACTIVE;
+    if ($had) session_write_close();
     $ch = curl_init(ENGINE_API . $path);
     curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => 3,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => json_encode($data, JSON_UNESCAPED_UNICODE)]);
     $body = curl_exec($ch);
     $err = curl_error($ch);
     curl_close($ch);
+    if ($had && $reopen && !headers_sent()) @session_start();
     $j = $body !== false ? json_decode((string)$body, true) : null;
     if (!is_array($j)) {
         return ['ok' => false, 'error' => 'The engine is not running (' . ($err ?: 'bad response') . '). On the server: sudo systemctl start mmengine', 'engine_down' => true];

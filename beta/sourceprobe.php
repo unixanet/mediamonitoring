@@ -18,7 +18,7 @@ $method = in_array($_POST['fetch_method'] ?? '', ['auto', 'http', 'browser'], tr
 $profile = ($_POST['fetch_profile'] ?? '') === 'bot' ? 'bot' : 'browser';
 $tz = (string)($_POST['feed_timezone'] ?? 'Asia/Yerevan');
 
-$r = engine_call('/detect', ['input' => $raw, 'method' => $method, 'profile' => $profile, 'tz' => $tz], 110);
+$r = engine_call('/detect', ['input' => $raw, 'method' => $method, 'profile' => $profile, 'tz' => $tz], 110, false);
 $out = ['ok' => !empty($r['candidates']), 'candidates' => $r['candidates'] ?? [], 'notes' => $r['notes'] ?? [], 'via' => $r['via'] ?? 'direct', 'ms' => $r['ms'] ?? 0];
 if (empty($r['candidates'])) {
     $out['error'] = $r['error'] ?? 'Nothing found at this address.';
