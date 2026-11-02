@@ -213,6 +213,23 @@ $types = ['rss' => ['RSS feed', 'Any news site feed'], 'sitemap' => ['Sitemap', 
       </div>
       <?php endif; ?>
     </div>
+    <div>
+      <div class="<?= $lbl ?>"><?= e(t('Which articles to download')) ?></div>
+      <div class="grid gap-2.5 sm:grid-cols-3">
+        <?php foreach (['all' => 'Everything in the feed', 'new' => 'Only new, from now', 'date' => 'Published from a date'] as $v => $l): ?>
+          <label class="flex items-center gap-3 rounded-[10px] border border-line2 px-4 py-2.5 text-sm font-medium cursor-pointer has-[:checked]:border-ms has-[:checked]:bg-ms-light has-[:checked]:text-[#0B4F94]">
+            <input type="radio" name="start_mode" value="<?= $v ?>" <?= $s['start_mode'] === $v ? 'checked' : '' ?> class="h-4 w-4 accent-[#0078D4]"><?= e(t($l)) ?>
+          </label>
+        <?php endforeach; ?>
+      </div>
+      <div id="dateWrap" class="mt-3 max-w-xs <?= $s['start_mode'] === 'date' ? '' : 'hidden' ?>"><input name="start_date" type="date" value="<?= e($s['start_date']) ?>" class="<?= $inp ?>"></div>
+      <p class="mt-2 text-[13px] text-muted"><?= e(t('An RSS feed only contains the latest items (usually 10-100). Older articles are not available through RSS.')) ?></p>
+    </div>
+    <div>
+      <label class="<?= $lbl ?>" for="url_exclude"><?= e(t('Skip URLs containing')) ?></label>
+      <input id="url_exclude" name="url_exclude" value="<?= e($xs['url_exclude']) ?>" placeholder="/ru/, /video/" class="<?= $inp ?>">
+      <p class="mt-1.5 text-xs text-muted"><?= e(t('Optional. Articles whose address contains any of these parts are not downloaded. Separate with commas.')) ?></p>
+    </div>
   </section>
 
   <!-- Живой предпросмотр -->
@@ -258,28 +275,15 @@ $types = ['rss' => ['RSS feed', 'Any news site feed'], 'sitemap' => ['Sitemap', 
     <p class="text-[13px] text-muted"><?= e(t('Use a sitemap index (sitemap_index.xml) or a direct sitemap (post-sitemap89.xml). The crawler reads the newest sitemaps, finds new article URLs and downloads each article page.')) ?></p>
     <div><label class="<?= $lbl ?>" for="urls_extra"><?= e(t('More sitemap URLs (one per line, optional)')) ?></label><textarea id="urls_extra" name="urls_extra" rows="2" class="<?= $inp ?>"><?= e($xs['urls_extra']) ?></textarea></div>
     <label class="flex items-center gap-3 rounded-[10px] border border-line2 px-4 py-2.5 text-sm font-medium cursor-pointer"><input type="checkbox" name="probe_next" value="1" <?= $xs['probe_next'] ? 'checked' : '' ?> class="h-4 w-4 accent-[#0078D4]"><?= e(t('Probe the next number when there is nothing new (post-sitemap89.xml → post-sitemap90.xml)')) ?></label>
-    <div class="grid gap-4 sm:grid-cols-3">
+    <div class="grid gap-4 sm:grid-cols-2">
       <div><label class="<?= $lbl ?>"><?= e(t('Only sitemaps containing')) ?></label><input name="map_include" value="<?= e($xs['map_include']) ?>" placeholder="post-sitemap" class="<?= $inp ?>"></div>
       <div><label class="<?= $lbl ?>"><?= e(t('Only URLs containing')) ?></label><input name="url_include" value="<?= e($xs['url_include']) ?>" placeholder="/news/" class="<?= $inp ?>"></div>
-      <div><label class="<?= $lbl ?>"><?= e(t('Skip URLs containing')) ?></label><input name="url_exclude" value="<?= e($xs['url_exclude']) ?>" placeholder="/video/, /photo/" class="<?= $inp ?>"></div>
     </div>
   </section>
 
   <!-- 2. Что и как часто -->
   <section class="<?= $card ?> space-y-5 min-w-0 xl:col-start-1">
     <h2 class="text-[15px] font-semibold"><?= e(t('2. What to download and how often')) ?></h2>
-    <div>
-      <div class="<?= $lbl ?>"><?= e(t('Which articles to download')) ?></div>
-      <div class="grid gap-2.5 sm:grid-cols-3">
-        <?php foreach (['all' => 'Everything in the feed', 'new' => 'Only new, from now', 'date' => 'Published from a date'] as $v => $l): ?>
-          <label class="flex items-center gap-3 rounded-[10px] border border-line2 px-4 py-2.5 text-sm font-medium cursor-pointer has-[:checked]:border-ms has-[:checked]:bg-ms-light has-[:checked]:text-[#0B4F94]">
-            <input type="radio" name="start_mode" value="<?= $v ?>" <?= $s['start_mode'] === $v ? 'checked' : '' ?> class="h-4 w-4 accent-[#0078D4]"><?= e(t($l)) ?>
-          </label>
-        <?php endforeach; ?>
-      </div>
-      <div id="dateWrap" class="mt-3 max-w-xs <?= $s['start_mode'] === 'date' ? '' : 'hidden' ?>"><input name="start_date" type="date" value="<?= e($s['start_date']) ?>" class="<?= $inp ?>"></div>
-      <p class="mt-2 text-[13px] text-muted"><?= e(t('An RSS feed only contains the latest items (usually 10-100). Older articles are not available through RSS.')) ?></p>
-    </div>
     <div id="tgHist" class="hidden">
       <label class="<?= $lbl ?>" for="history_pages"><?= e(t('History to download on the first fetch')) ?></label>
       <select id="history_pages" name="history_pages" class="<?= $inp ?> sm:max-w-sm">

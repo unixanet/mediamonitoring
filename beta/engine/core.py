@@ -177,7 +177,11 @@ class Engine(PagesMixin, MaintMixin):
         min_ts = db_to_ts(src.get("min_published_at"))
         need_full = bool(src.get("fetch_full_text"))
         prepared = []
+        cfg = jload(src.get("extra"))
         for i in items:
+            u = i.get("url") or ""
+            if (cfg.get("url_include") and not self._match(u, cfg["url_include"])) or (cfg.get("url_exclude") and self._match(u, cfg["url_exclude"])):
+                continue
             key = dedup_key(src.get("dedup_by") or "url", i)
             if not key or not i["title"]:
                 continue
@@ -382,6 +386,8 @@ class Engine(PagesMixin, MaintMixin):
         min_ts = db_to_ts(src.get("min_published_at"))
         entries = []
         for i in items[:300]:
+            if (cfg.get("url_include") and not self._match(i["url"], cfg["url_include"])) or (cfg.get("url_exclude") and self._match(i["url"], cfg["url_exclude"])):
+                continue
             pub = time_hint(i["time"], tz)
             if min_ts and pub and pub < min_ts:
                 res["old"] += 1
