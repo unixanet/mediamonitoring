@@ -3,8 +3,8 @@
 // Запуск: php crawler/detect.php <адрес или домен> [auto|http|browser] [--json]
 // Пример: php crawler/detect.php lurer.com/timeline/am auto
 if (PHP_SAPI !== 'cli') exit('CLI only');
-require __DIR__ . '/../lib/crawler.php';
-require __DIR__ . '/../lib/detect.php';
+require_once __DIR__ . '/../lib/crawler.php';
+require_once __DIR__ . '/../lib/detect.php';
 
 if (!function_exists('fmt_dt')) {
     function fmt_dt(?string $utc): string

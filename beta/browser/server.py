@@ -13,13 +13,20 @@ X-Browser-Error (если сам браузер упал или не дожда�
 """
 import asyncio
 import base64
+import hashlib
 import os
 import random
 import re
 import time
 
+from urllib.parse import urlparse
 from aiohttp import web
 from playwright.async_api import async_playwright
+
+try:
+    import trafilatura
+except Exception:       # необязательная зависимость: без неё /extract отвечает 501, краулер использует свой разбор
+    trafilatura = None
 
 PORT = int(os.environ.get("MM_BROWSER_PORT", "8765"))
 PROFILE = os.environ.get("MM_BROWSER_PROFILE", "/var/lib/mmbrowser/profile")
@@ -66,6 +73,7 @@ class Browser:
     def __init__(self):
         self.pw = None
         self.ctx = None
+        self.proxy_ctx = {}       # прокси -> отдельный контекст (свои cookie и профиль)
         self.sem = asyncio.Semaphore(MAX_PAGES)
         self.lock = asyncio.Lock()
         self.started = time.time()
@@ -79,6 +87,28 @@ class Browser:
     async def start(self):
         self.pw = await async_playwright().start()
         await self._launch()
+
+    async def ctx_for(self, proxy):
+        if not proxy:
+            return self.ctx
+        if proxy not in self.proxy_ctx:
+            u = urlparse(proxy)
+            conf = {"server": f"{u.scheme}://{u.hostname}:{u.port}"}
+            if u.username:
+                conf["username"] = u.username
+                conf["password"] = u.password or ""
+            args = ["--disable-blink-features=AutomationControlled", "--no-default-browser-check", "--disable-dev-shm-usage", "--disable-gpu", "--proxy-bypass-list=<-loopback>"]
+            if os.geteuid() == 0:
+                args.append("--no-sandbox")
+            d = f"{PROFILE}-proxy-" + hashlib.sha1(proxy.encode()).hexdigest()[:10]
+            os.makedirs(d, exist_ok=True)
+            c = await self.pw.chromium.launch_persistent_context(
+                d, headless=HEADLESS, args=args, executable_path=EXE, locale="hy-AM", timezone_id="Asia/Yerevan",
+                viewport={"width": 1366, "height": 768}, proxy=conf,
+                extra_http_headers={"Accept-Language": "hy-AM,hy;q=0.9,en-US;q=0.8,en;q=0.7"})
+            await c.add_init_script(STEALTH)
+            self.proxy_ctx[proxy] = c
+        return self.proxy_ctx[proxy]
 
     async def _launch(self):
         args = ["--disable-blink-features=AutomationControlled", "--no-default-browser-check", "--disable-dev-shm-usage", "--disable-gpu"]
@@ -189,13 +219,13 @@ class Browser:
         except Exception:
             return None
 
-    async def fetch(self, url, timeout):
+    async def fetch(self, url, timeout, proxy=None):
         await self.recycle_if_needed()
         async with self.sem:
             self.requests += 1
             self.since_recycle += 1
             deadline = time.time() + timeout
-            page = await self.ctx.new_page()
+            page = await (await self.ctx_for(proxy)).new_page()
             try:
                 await asyncio.sleep(0.2 + random.random() * 0.6)          # человеческая пауза
                 ref = await self.warm_up(page, url, deadline)
@@ -242,8 +272,11 @@ async def handle_get(request):
     if not url.startswith(("http://", "https://")):
         return web.Response(status=400, text="url must be http(s)", headers={"X-Browser-Error": "bad url"})
     timeout = max(10, min(90, int(request.query.get("timeout", "50"))))
+    proxy = request.query.get("proxy") or None
+    if proxy and not re.match(r"^https?://", proxy):
+        return web.Response(status=400, text="bad proxy", headers={"X-Browser-Error": "bad proxy"})
     try:
-        r = await asyncio.wait_for(B.fetch(url, timeout), timeout + 15)
+        r = await asyncio.wait_for(B.fetch(url, timeout, proxy), timeout + 15)
     except Exception as e:      # таймаут, падение страницы, DNS и т.п.
         B.errors += 1
         msg = (str(e).splitlines() or ["browser error"])[0][:240]
@@ -254,10 +287,34 @@ async def handle_get(request):
     return web.Response(status=r["status"], body=r["body"], headers=h)
 
 
+async def handle_extract(request):
+    """POST {html, url}: текст статьи через trafilatura (лучшие результаты на бенчмарках среди открытых экстракторов)."""
+    if trafilatura is None:
+        return web.json_response({"ok": False, "error": "trafilatura is not installed"}, status=501)
+    try:
+        data = await request.json()
+        html = data.get("html") or ""
+        url = data.get("url") or None
+    except Exception:
+        return web.json_response({"ok": False, "error": "bad request"}, status=400)
+
+    def work():
+        out = trafilatura.extract(html, url=url, include_comments=False, include_tables=False, favor_recall=True, output_format="json", with_metadata=True)
+        return out
+
+    try:
+        import json as _json
+        raw = await asyncio.wait_for(asyncio.to_thread(work), 20)
+        j = _json.loads(raw) if raw else {}
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)[:200]}, status=500)
+    return web.json_response({"ok": bool(j.get("text")), "text": j.get("text", ""), "title": j.get("title", ""), "date": j.get("date", "")})
+
+
 async def handle_health(request):
     return web.json_response({
         "ok": True, "uptime_s": int(time.time() - B.started), "requests": B.requests, "challenges": B.challenges,
-        "challenges_solved": B.solved, "errors": B.errors, "pages_open": len(B.ctx.pages) if B.ctx else 0, "max_pages": MAX_PAGES,
+        "challenges_solved": B.solved, "errors": B.errors, "trafilatura": trafilatura is not None, "pages_open": len(B.ctx.pages) if B.ctx else 0, "max_pages": MAX_PAGES,
     })
 
 
@@ -273,8 +330,8 @@ async def on_stop(app):
 
 
 def main():
-    app = web.Application()
-    app.add_routes([web.get("/get", handle_get), web.get("/health", handle_health)])
+    app = web.Application(client_max_size=8 * 1024 * 1024)
+    app.add_routes([web.get("/get", handle_get), web.post("/extract", handle_extract), web.get("/health", handle_health)])
     app.on_startup.append(on_start)
     app.on_cleanup.append(on_stop)
     web.run_app(app, host="127.0.0.1", port=PORT, print=lambda *_: None)

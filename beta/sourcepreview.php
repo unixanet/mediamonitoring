@@ -24,10 +24,10 @@ if ($f = crawl_failure($src, $url, $ch, $st, curl_errno($ch))) {
     $out(['ok' => false, 'error' => htmlspecialchars($f[1], ENT_QUOTES, 'UTF-8')]);
     exit;
 }
-$ex = ft_extract(ft_decode($st->body, (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE)), $sel);
+$ex = ft_extract_best(ft_decode($st->body, (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE)), $sel, $url);
 $text = $ex['text'];
 $out(['ok' => $text !== '', 'error' => 'No article text found on the page',
       'title' => htmlspecialchars($ex['title'] ?: '(no title found)', ENT_QUOTES, 'UTF-8'),
-      'date' => $ex['ts'] ? fmt_dt(gmdate('Y-m-d H:i:s', $ex['ts'])) : 'date not found (download time is used)',
+      'extractor' => $ex['extractor'] ?? 'built-in', 'date' => $ex['ts'] ? fmt_dt(gmdate('Y-m-d H:i:s', $ex['ts'])) : 'date not found (download time is used)',
       'length' => mb_strlen($text),
       'text' => htmlspecialchars(mb_substr($text, 0, 900) . (mb_strlen($text) > 900 ? '…' : ''), ENT_QUOTES, 'UTF-8')]);

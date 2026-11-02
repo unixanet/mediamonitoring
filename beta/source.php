@@ -40,7 +40,7 @@ $bad = $ftc['partial'] + $ftc['title_only'];
 $pct = $ftTotal ? (int)round(100 * $ftc['full'] / $ftTotal) : 100;
 $scfg = json_decode($s['extra'] ?? '', true) ?: [];
 $dedup = ['url' => 'By article URL', 'guid' => 'By feed GUID', 'title' => 'By title', 'title_date' => 'By title + publication day', 'content' => 'By article text'];
-$typeLabel = ['rss' => 'RSS', 'sitemap' => 'Sitemap', 'telegram' => 'Telegram', 'facebook' => 'Facebook'];
+$typeLabel = ['rss' => 'RSS', 'sitemap' => 'Sitemap', 'listing' => 'Page list', 'telegram' => 'Telegram', 'facebook' => 'Facebook'];
 $state = src_state($s);
 $method = ['auto' => 'Auto (browser if blocked)', 'http' => 'Direct request', 'browser' => 'Real browser'][$s['fetch_method'] ?? 'http'] ?? 'Direct request';
 
@@ -154,6 +154,9 @@ crawler_banner(); ?>
         kv(t('Duplicate check'), e(t($dedup[$s['dedup_by']])));
         kv(t('Time zone of dates'), e($s['feed_timezone']));
         kv(t('Open article pages'), e(t($s['fetch_full_text'] ? 'Yes' : 'No')));
+        kv(t('Respect robots.txt'), e(t(!empty($s['respect_robots']) ? 'Yes' : 'No')));
+        if (!empty($s['proxy_url'])) kv(t('Proxy'), e(preg_replace('#//[^@/]+@#', '//***@', $s['proxy_url'])));
+        if ($s['type'] === 'listing') { kv(t('List block'), e($scfg['list_container'] ?: t('whole page'))); kv(t('Link pattern'), '<span class="break-all">' . e((string)($scfg['list_pattern'] ?? '')) . '</span>'); }
         kv(t('Articles in 7 days'), number_format((int)$s['articles_7d']));
         if ($s['type'] === 'sitemap' && !empty($scfg['probe_next'])) kv(t('Sitemap probe next number'), e(t('On')));
         kv(t('Added'), e(fmt_dt($s['created_at'])));

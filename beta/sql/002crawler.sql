@@ -13,11 +13,13 @@ CREATE TABLE IF NOT EXISTS sources (
   id                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
   name               VARCHAR(190) NOT NULL,
   category_id        INT UNSIGNED NULL,
-  type               ENUM('rss','sitemap','telegram','facebook') NOT NULL DEFAULT 'rss',
+  type               ENUM('rss','sitemap','listing','telegram','facebook') NOT NULL DEFAULT 'rss',   -- listing: список ссылок на странице
   feed_url           VARCHAR(1024) NOT NULL,                       -- адрес ленты / sitemap / https://t.me/s/<username>
   feed_url_hash      CHAR(32) NOT NULL,                            -- md5(feed_url), уникальность
   fetch_method       ENUM('auto','http','browser') NOT NULL DEFAULT 'auto', -- auto: обычный запрос, при блокировке настоящий браузер
   fetch_profile      ENUM('browser','bot') NOT NULL DEFAULT 'browser',      -- заголовки обычного запроса
+  respect_robots     TINYINT(1) NOT NULL DEFAULT 1,                -- не открывать страницы, закрытые в robots.txt (RFC 9309)
+  proxy_url          VARCHAR(255) NULL,                            -- прокси для этого источника: http://user:pass@host:port
   fetch_full_text    TINYINT(1) NOT NULL DEFAULT 0,                -- открывать страницы статей за полным текстом
   feed_timezone      VARCHAR(40) NOT NULL DEFAULT 'Asia/Yerevan',  -- пояс для дат без указания зоны
   dedup_by           ENUM('url','guid','title','title_date','content') NOT NULL DEFAULT 'url',
@@ -95,6 +97,8 @@ CREATE TABLE IF NOT EXISTS url_queue (
   url_hash    BINARY(16) NOT NULL,
   url         VARCHAR(2048) NOT NULL,
   lastmod     DATETIME NULL,
+  title_hint  VARCHAR(1000) NULL,         -- заголовок из новостной карты или списка: сохраняем статью, даже если страница закрыта
+  published_hint DATETIME NULL,          -- дата публикации из новостной карты или списка (UTC)
   status      ENUM('pending','done','skipped','failed') NOT NULL DEFAULT 'pending',
   attempts    TINYINT UNSIGNED NOT NULL DEFAULT 0,
   next_try_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -152,4 +156,14 @@ CREATE TABLE IF NOT EXISTS crawler_status (
   last_cycle_ms INT UNSIGNED NULL,
   jobs_done     BIGINT UNSIGNED NOT NULL DEFAULT 0,
   PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Кэш robots.txt по хостам (RFC 9309): правила разбираем при каждой проверке, хранится сам текст
+CREATE TABLE IF NOT EXISTS robots_cache (
+  host       VARCHAR(190) NOT NULL,
+  status     ENUM('ok','none','error') NOT NULL,      -- ok: файл получен; none: 4xx (ограничений нет); error: 5xx или сеть (по RFC считаем всё закрытым)
+  body       MEDIUMTEXT NULL,
+  fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME NOT NULL,
+  PRIMARY KEY (host)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

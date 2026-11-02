@@ -2,8 +2,10 @@
 // Ядро краулера. Используется демоном (crawler/run.php) и админкой (Fetch now / Start / добавление источника).
 require_once __DIR__ . '/fulltext.php';
 require_once __DIR__ . '/engine.php';
+require_once __DIR__ . '/robots.php';
+require_once __DIR__ . '/detect.php';
 
-const CRAWL_UA_BOT = 'Mozilla/5.0 (compatible; MediaMonitoringBot/1.0; +https://beta.mediamonitoring.am)';
+const CRAWL_UA_BOT = 'Mozilla/5.0 (compatible; MediaMonitoringBot/1.0; +https://beta.mediamonitoring.am/bot.php)';
 const CRAWL_UA_BROWSER = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 const CRAWL_MAX_BODY = 10485760;
 const CRAWL_BROWSER_URL = 'http://127.0.0.1:8765';   // сервис настоящего браузера (browser/server.py)
@@ -294,9 +296,10 @@ function crawl_make_handle(array $src, bool $force, stdClass $st, ?string $url =
     $url = $url ?? $src['feed_url'];
     if (crawl_browser_active($src)) {          // запрос уходит в сервис браузера, тот вернёт тело страницы и её статус
         $st->via_browser = true;
-        $ch = curl_init(CRAWL_BROWSER_URL . '/get?timeout=50&url=' . rawurlencode($url));
+        $bt = (int)($src['browser_timeout'] ?? 50);
+        $ch = curl_init(CRAWL_BROWSER_URL . '/get?timeout=' . $bt . '&url=' . rawurlencode($url) . (!empty($src['proxy_url']) ? '&proxy=' . rawurlencode($src['proxy_url']) : ''));
         curl_setopt_array($ch, [
-            CURLOPT_TIMEOUT => 75, CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_TIMEOUT => $bt + 25, CURLOPT_CONNECTTIMEOUT => 3,
             CURLOPT_HEADERFUNCTION => function ($c, $line) use ($st) {
                 if (stripos($line, 'cf-mitigated:') === 0) $st->cf = true;
                 elseif (stripos($line, 'x-browser-error:') === 0) $st->berr = trim(substr($line, 16));
@@ -356,6 +359,9 @@ function crawl_make_handle(array $src, bool $force, stdClass $st, ?string $url =
             return strlen($st->body) > CRAWL_MAX_BODY ? 0 : strlen($d);
         },
     ];
+    if (!empty($src['proxy_url'])) {
+        $opts[CURLOPT_PROXY] = $src['proxy_url'];
+    }
     if ($browser) {
         $opts[CURLOPT_HTTP_VERSION] = CURL_HTTP_VERSION_2TLS;
         $jar = sys_get_temp_dir() . '/mm_cj_' . md5((string)parse_url($url, PHP_URL_HOST)) . '.txt';
@@ -600,7 +606,15 @@ function sm_parse(string $body): array
         return ['index', $entries];
     }
     if ($xml->getName() === 'urlset') {
-        foreach ($xml->url as $u) $entries[] = ['loc' => trim((string)$u->loc), 'ts' => sm_ts((string)$u->lastmod)];
+        foreach ($xml->url as $u) {
+            $e = ['loc' => trim((string)$u->loc), 'ts' => sm_ts((string)$u->lastmod), 'title' => '', 'pub' => null];
+            $news = $u->children('http://www.google.com/schemas/sitemap-news/0.9')->news ?? null;   // Google News sitemap: заголовок и дата публикации
+            if ($news) {
+                $e['title'] = trim((string)$news->title);
+                $e['pub'] = sm_ts((string)$news->publication_date);
+            }
+            $entries[] = $e;
+        }
         return ['urlset', $entries];
     }
     return [null, 'Not a sitemap (root element: ' . $xml->getName() . ')'];
@@ -612,6 +626,24 @@ function sm_match(string $url, string $list): bool
         if (stripos($url, $needle) !== false) return true;
     }
     return false;
+}
+
+// Положить найденные ссылки в очередь (дубли игнорируются). $entries: [loc, ts, title, pub]. Возвращает число новых
+function crawl_queue_insert(mysqli $db, int $sid, array $entries): int
+{
+    $new = 0;
+    foreach (array_chunk($entries, 200) as $chunk) {
+        $vals = [];
+        foreach ($chunk as $e) {
+            $vals[] = "($sid, UNHEX('" . md5(crawl_norm_url($e['loc'])) . "'), '" . $db->real_escape_string(mb_substr($e['loc'], 0, 2048)) . "', "
+                . (!empty($e['ts']) ? "'" . gmdate('Y-m-d H:i:s', $e['ts']) . "'" : 'NULL') . ', '
+                . (!empty($e['title']) ? "'" . $db->real_escape_string(mb_substr($e['title'], 0, 1000)) . "'" : 'NULL') . ', '
+                . (!empty($e['pub']) ? "'" . gmdate('Y-m-d H:i:s', $e['pub']) . "'" : 'NULL') . ', NOW())';
+        }
+        $db->query('INSERT IGNORE INTO url_queue (source_id, url_hash, url, lastmod, title_hint, published_hint, next_try_at) VALUES ' . implode(',', $vals));
+        $new += max(0, $db->affected_rows);
+    }
+    return $new;
 }
 
 // Загрузка одной карты. Возвращает [body, fail|null, http, ms, not_modified]
@@ -702,16 +734,7 @@ function sm_scan(mysqli $db, array $src, array $cfg, string $url, bool $force, a
         usort($fresh, fn($a, $b) => ($b['ts'] ?? 0) <=> ($a['ts'] ?? 0));
         $fresh = array_slice($fresh, 0, 300);
     }
-    $sid = (int)$src['id'];
-    foreach (array_chunk($fresh, 200) as $chunk) {
-        $vals = [];
-        foreach ($chunk as $e) {
-            $vals[] = "($sid, UNHEX('" . md5(crawl_norm_url($e['loc'])) . "'), '" . $db->real_escape_string(mb_substr($e['loc'], 0, 2048)) . "', "
-                . ($e['ts'] ? "'" . gmdate('Y-m-d H:i:s', $e['ts']) . "'" : 'NULL') . ', NOW())';
-        }
-        $db->query('INSERT IGNORE INTO url_queue (source_id, url_hash, url, lastmod, next_try_at) VALUES ' . implode(',', $vals));
-        $ctx['queued'] += max(0, $db->affected_rows);
-    }
+    $ctx['queued'] += crawl_queue_insert($db, (int)$src['id'], $fresh);
     $ctx['dup'] += count($fresh);
     return null;
 }
@@ -773,10 +796,56 @@ function crawl_sitemap_source(mysqli $db, array $src, bool $force): array
     return $res;
 }
 
+// Опрос источника типа listing: список ссылок на странице -> очередь статей
+function crawl_listing_source(mysqli $db, array $src, bool $force): array
+{
+    $cfg = json_decode($src['extra'] ?? '', true) ?: [];
+    $res = ['ok' => false, 'http' => 0, 'new' => 0, 'feed' => 0, 'old' => 0, 'dup' => 0, 'error' => '', 'ms' => 0, 'queued' => 0];
+    $url = $src['feed_url'];
+    if (!empty($src['respect_robots'])) {
+        [$okRobots, $why] = robots_allowed($db, $src, $url);
+        if (!$okRobots) {
+            return crawl_fail($db, $src, $res, 'robots_disallowed', $why, 'URL: ' . $url);
+        }
+    }
+    [$body, $f, $http, $ctype, $viaB, $ms] = detect_fetch($src, $url, 'page');
+    $res['http'] = $http;
+    $res['ms'] = $ms;
+    if ($f) {
+        return crawl_fail($db, $src, $res, $f[0], $f[1], $f[2]);
+    }
+    $items = listing_extract(ft_decode($body, $ctype), $url, ['container' => $cfg['list_container'] ?? '', 'pattern' => $cfg['list_pattern'] ?? '.']);
+    if (!$items) {
+        return crawl_fail($db, $src, $res, 'listing_empty', 'No article links found with the saved rule. The page layout may have changed: open the source and run the detection again.', 'URL: ' . $url . "\nRule: " . json_encode($cfg, JSON_UNESCAPED_UNICODE));
+    }
+    $res['feed'] = count($items);
+    $tz = $src['feed_timezone'] ?? 'Asia/Yerevan';
+    $minTs = $src['min_published_at'] ? strtotime($src['min_published_at'] . ' UTC') : null;
+    $entries = [];
+    foreach (array_slice($items, 0, 300) as $i) {
+        $pub = detect_time_hint($i['time'], $tz);
+        if ($minTs && $pub && $pub < $minTs) { $res['old']++; continue; }
+        $entries[] = ['loc' => $i['url'], 'ts' => $pub, 'title' => $i['title'], 'pub' => $pub];
+    }
+    $res['queued'] = crawl_queue_insert($db, (int)$src['id'], $entries);
+    $interval = crawl_interval($src);
+    $delay = $interval + random_int(0, max(1, (int)($interval * 0.1)));
+    $q = $db->prepare('UPDATE sources SET last_checked_at=NOW(), last_success_at=NOW(), last_http_code=?, last_response_ms=?, last_error=NULL,
+        consecutive_errors=0, next_check_at = NOW() + INTERVAL ? SECOND WHERE id=?');
+    $q->bind_param('iiii', $http, $ms, $delay, $src['id']);
+    $q->execute();
+    $q->close();
+    $res['ok'] = true;
+    if ($res['queued'] > 0) {
+        crawl_log($db, (int)$src['id'], 'info', 'listing_queued', $http, $ms, 0, sprintf('%d new article links found on the page (%d links in total)', $res['queued'], $res['feed']));
+    }
+    return $res;
+}
+
 // Один источник синхронно (Fetch now / Start / первый забег). Принудительно, без ETag. Затем сразу тянем полный текст.
 function crawl_source_sync(mysqli $db, array $src): array
 {
-    if (!in_array($src['type'], ['rss', 'sitemap', 'telegram', 'facebook'], true)) {
+    if (!in_array($src['type'], ['rss', 'sitemap', 'listing', 'telegram', 'facebook'], true)) {
         return ['ok' => false, 'http' => 0, 'new' => 0, 'feed' => 0, 'old' => 0, 'dup' => 0, 'ms' => 0,
                 'error' => 'This source type is not supported by the crawler.'];
     }
@@ -784,6 +853,8 @@ function crawl_source_sync(mysqli $db, array $src): array
     $db->query('UPDATE sources SET next_check_at = NOW() + INTERVAL 90 SECOND WHERE id = ' . (int)$src['id']);   // занять, чтобы демон не дублировал
     if ($src['type'] === 'sitemap') {
         $res = crawl_sitemap_source($db, $src, true);
+    } elseif ($src['type'] === 'listing') {
+        $res = crawl_listing_source($db, $src, true);
     } else {
         $st = new stdClass();
         $st->body = '';

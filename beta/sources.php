@@ -12,7 +12,7 @@ $r = cdb()->query('SELECT s.id, s.name, s.type, s.feed_url, s.is_active, s.artic
 while ($r && ($x = $r->fetch_assoc())) {
     $rows[] = $x;
 }
-$typeLabel = ['rss' => 'RSS', 'sitemap' => 'Sitemap', 'telegram' => 'Telegram', 'facebook' => 'Facebook'];
+$typeLabel = ['rss' => 'RSS', 'sitemap' => 'Sitemap', 'listing' => 'Page list', 'telegram' => 'Telegram', 'facebook' => 'Facebook'];
 
 app_start(t('Sources'), 'sources', $user);
 crawler_banner();

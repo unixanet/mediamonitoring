@@ -195,6 +195,34 @@ function ft_extract(string $html, array $cfg = []): array
     return $out;
 }
 
+// Текст статьи через trafilatura (сервис в browser/server.py). null, если сервис не отвечает или текста нет
+function ft_trafilatura(string $html, string $url): ?string
+{
+    $ch = curl_init(CRAWL_BROWSER_URL . '/extract');
+    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode(['html' => mb_substr($html, 0, 3000000), 'url' => $url], JSON_INVALID_UTF8_SUBSTITUTE),
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_CONNECTTIMEOUT => 2]);
+    $r = curl_exec($ch);
+    if (!$r || (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE) !== 200) return null;
+    $j = json_decode($r, true);
+    $t = trim((string)($j['text'] ?? ''));
+    return $t !== '' ? $t : null;
+}
+
+// Свой разбор (заголовок, дата, текст) + trafilatura для текста: берём её результат, если он не сильно короче нашего
+function ft_extract_best(string $html, array $cfg, string $url): array
+{
+    $ex = ft_extract($html, $cfg);
+    if (!empty($cfg['sel_body'])) {
+        return $ex;                                  // пользователь задал свой селектор текста
+    }
+    $t = ft_trafilatura($html, $url);
+    if ($t !== null && (mb_strlen($ex['text']) < FT_MIN_LEN || mb_strlen($t) >= 0.5 * mb_strlen($ex['text']))) {
+        $ex['text'] = $t;
+        $ex['extractor'] = 'trafilatura';
+    }
+    return $ex;
+}
+
 function ft_log(mysqli $db, array $src, string $level, string $event, string $msg, string $url, ?int $http = null): void
 {
     crawl_log($db, (int)$src['id'], $level, $event, $http, 0, 0, $msg, 'URL: ' . $url);
@@ -221,7 +249,7 @@ function ft_handle(mysqli $db, array &$job, $ch, stdClass $st, int $errno, array
         [$event, $reason] = $fail;
     } else {
         $html = ft_decode($st->body, (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE));
-        $ex = ft_extract($html, (json_decode($src['extra'] ?? '', true) ?: []) + ['tz' => $src['feed_timezone'] ?? 'UTC']);
+        $ex = ft_extract_best($html, (json_decode($src['extra'] ?? '', true) ?: []) + ['tz' => $src['feed_timezone'] ?? 'UTC'], $url);
         $len = mb_strlen($ex['text']);
         if ($len === 0) {
             $event = 'fulltext_failed';
@@ -276,11 +304,20 @@ function ft_handle(mysqli $db, array &$job, $ch, stdClass $st, int $errno, array
         return;
     }
 
-    // kind = queue: страница из sitemap, статьи в БД ещё нет
+    // kind = queue: страница из sitemap или списка, статьи в БД ещё нет
     $qid = (int)$job['id'];
     $att = (int)$job['attempts'] + 1;
-    if ($ex === null || $ex['title'] === '') {
+    $hint = trim((string)($job['title_hint'] ?? ''));
+    $pageTitle = $ex['title'] ?? '';
+    if ($ex === null || $pageTitle === '') {
         $reason = $reason ?: 'No title found on the page';
+        if ($hint !== '') {
+            // страница не отдалась, но заголовок известен: сохраняем статью сразу, дальше её дозагружает обычный повтор
+            ft_save_hint_article($db, $src, $job, 'pending', $reason, 1);
+            $stats['failed']++;
+            ft_log($db, $src, $event === 'cloudflare_block' ? 'error' : 'warning', $event ?: 'fulltext_failed', $reason . ' (saved with the title from the list)', $url, $http ?: null);
+            return;
+        }
         $short = mb_substr($reason, 0, 255);
         if ($att >= FT_MAX_ATTEMPTS) {
             $q = $db->prepare("UPDATE url_queue SET status='failed', attempts=?, last_error=? WHERE id=?");
@@ -299,22 +336,23 @@ function ft_handle(mysqli $db, array &$job, $ch, stdClass $st, int $errno, array
     }
 
     $lm = !empty($job['lastmod']) ? strtotime($job['lastmod'] . ' UTC') : null;
-    $ts = $ex['ts'] ?: ($lm ?: time());
+    $ph = !empty($job['published_hint']) ? strtotime($job['published_hint'] . ' UTC') : null;
+    $ts = $ex['ts'] ?: ($ph ?: ($lm ?: time()));
     $minTs = $src['min_published_at'] ? strtotime($src['min_published_at'] . ' UTC') : null;
     if ($minTs !== null && $ts < $minTs) {
         $db->query("UPDATE url_queue SET status='skipped', attempts=$att WHERE id=$qid");
         return;
     }
-    $item = ['url' => $url, 'guid' => $url, 'title' => $ex['title'], 'ts' => $ts, 'content' => $ex['text']];
+    $item = ['url' => $url, 'guid' => $url, 'title' => $pageTitle, 'ts' => $ts, 'content' => $ex['text']];
     $key = crawl_dedup_key($src['dedup_by'], $item);
     $ok = $reason === '';
     $status = $ok ? 'full' : 'pending';
     $nr = $ok ? null : gmdate('Y-m-d H:i:s', time() + ft_delay(1));
     $fr = $ok ? null : mb_substr($reason, 0, 255);
     $dh = md5($key);
-    $ch2 = md5($ex['title'] . "\n" . $ex['text']);
+    $ch2 = md5($pageTitle . "\n" . $ex['text']);
     $u = mb_substr($url, 0, 2048);
-    $title = mb_substr($ex['title'], 0, 1000);
+    $title = mb_substr($pageTitle, 0, 1000);
     $content = mb_substr($ex['text'], 0, 500000);
     $pub = gmdate('Y-m-d H:i:s', $ts);
     $q = $db->prepare('INSERT IGNORE INTO articles (source_id, dedup_hash, url, title, content, published_at, content_hash, content_status, fetch_attempts, next_retry_at, fail_reason, journal_at)
@@ -341,6 +379,67 @@ function ft_handle(mysqli $db, array &$job, $ch, stdClass $st, int $errno, array
     }
 }
 
+// Сохранить статью по заголовку из карты или списка, когда страница недоступна. $status: pending (будут повторы) или title_only (окончательно)
+function ft_save_hint_article(mysqli $db, array $src, array $job, string $status, string $reason, int $attempts): bool
+{
+    $sid = (int)$src['id'];
+    $title = mb_substr(trim((string)$job['title_hint']), 0, 1000);
+    $lm = !empty($job['lastmod']) ? strtotime($job['lastmod'] . ' UTC') : null;
+    $ph = !empty($job['published_hint']) ? strtotime($job['published_hint'] . ' UTC') : null;
+    $ts = $ph ?: ($lm ?: time());
+    $minTs = $src['min_published_at'] ? strtotime($src['min_published_at'] . ' UTC') : null;
+    $qid = (int)$job['id'];
+    if ($minTs !== null && $ts < $minTs) {
+        $db->query("UPDATE url_queue SET status='skipped' WHERE id = $qid");
+        return false;
+    }
+    $url = mb_substr($job['url'], 0, 2048);
+    $key = crawl_dedup_key($src['dedup_by'], ['url' => $url, 'guid' => $url, 'title' => $title, 'ts' => $ts, 'content' => '']);
+    $dh = md5($key);
+    $ch2 = md5($title . "\n");
+    $pub = gmdate('Y-m-d H:i:s', $ts);
+    $nr = $status === 'pending' ? gmdate('Y-m-d H:i:s', time() + ft_delay(1)) : null;
+    $jat = $status === 'pending' ? null : gmdate('Y-m-d H:i:s');
+    $fr = mb_substr($reason, 0, 255);
+    $content = '';
+    $q = $db->prepare('INSERT IGNORE INTO articles (source_id, dedup_hash, url, title, content, published_at, content_hash, content_status, fetch_attempts, next_retry_at, fail_reason, journal_at)
+        VALUES (?, UNHEX(?), ?, ?, ?, ?, UNHEX(?), ?, ?, ?, ?, ?)');
+    $q->bind_param('isssssssisss', $sid, $dh, $url, $title, $content, $pub, $ch2, $status, $attempts, $nr, $fr, $jat);
+    $q->execute();
+    $inserted = $q->affected_rows === 1;
+    $newId = (int)$db->insert_id;
+    $q->close();
+    $db->query("UPDATE url_queue SET status='" . ($inserted ? 'done' : 'skipped') . "', attempts = attempts + 1, last_error = " . ($fr !== '' ? "'" . $db->real_escape_string($fr) . "'" : 'NULL') . " WHERE id = $qid");
+    if ($inserted) {
+        $db->query("UPDATE sources SET articles_count = articles_count + 1, unfinished_count = unfinished_count + 1, last_article_at = NOW() WHERE id = $sid");
+        if ($status !== 'pending') journal_add($db, [$newId]);
+    }
+    return $inserted;
+}
+
+// Страница закрыта в robots.txt: не открываем. Статья с известным заголовком сохраняется как title_only, иначе без повторов
+function ft_robots_block(mysqli $db, array $job, string $why, array &$stats): void
+{
+    $src = $job['src'];
+    $sid = (int)$src['id'];
+    $stats['failed']++;
+    $stats['last_error'] = $why;
+    if ($job['kind'] === 'article') {
+        $aid = (int)$job['id'];
+        $status = trim((string)$job['content']) === '' ? 'title_only' : 'partial';
+        $r = $db->real_escape_string(mb_substr($why, 0, 255));
+        $db->query("UPDATE articles SET content_status = '$status', next_retry_at = NULL, fail_reason = '$r' WHERE id = $aid");
+        journal_touch($db, $aid);
+    } elseif (trim((string)($job['title_hint'] ?? '')) !== '') {
+        ft_save_hint_article($db, $src, $job, 'title_only', $why, 1);
+    } else {
+        $qid = (int)$job['id'];
+        $r = $db->real_escape_string(mb_substr($why, 0, 255));
+        $db->query("UPDATE url_queue SET status = 'failed', last_error = '$r' WHERE id = $qid");
+    }
+    ft_log($db, $src, 'warning', 'robots_disallowed', $why, $job['url']);
+}
+
 // Параллельная загрузка страниц. job: kind=article|queue, id, url, src, [content, title, fetch_attempts | attempts, lastmod]
 // Вежливость к сайтам: слот на хост (общий для всех процессов), не чаще 1 запроса в секунду.
 function ft_run_jobs(mysqli $db, array $jobs, int $par = 8, int $perHost = 2): array
@@ -351,6 +450,18 @@ function ft_run_jobs(mysqli $db, array $jobs, int $par = 8, int $perHost = 2): a
     }
     $queue = [];
     foreach ($jobs as $job) {
+        if (!empty($job['src']['respect_robots'])) {            // уважаем robots.txt (RFC 9309)
+            [$okRobots, $why] = robots_allowed($db, $job['src'], $job['url']);
+            if (!$okRobots) {
+                if (str_contains($why, 'retrying later')) {      // robots.txt временно недоступен: вернуть задачу в очередь позже
+                    $tbl = $job['kind'] === 'article' ? 'articles SET next_retry_at = NOW() + INTERVAL 15 MINUTE, claimed_by = NULL' : 'url_queue SET next_try_at = NOW() + INTERVAL 15 MINUTE, claimed_by = NULL';
+                    $db->query("UPDATE $tbl WHERE id = " . (int)$job['id']);
+                    continue;
+                }
+                ft_robots_block($db, $job, $why, $stats);
+                continue;
+            }
+        }
         $job['_start'] = host_slot($db, 'page', (string)parse_url($job['url'], PHP_URL_HOST), 1000);
         $queue[] = $job;
     }
@@ -428,7 +539,7 @@ function ft_collect_jobs(mysqli $db, int $limit, int $sourceId = 0, int $perHost
     $rows = [];
     $r = $db->query("SELECT id, source_id, url, title, content, fetch_attempts FROM articles WHERE content_status = 'pending' AND claimed_by = '$tok'");
     while ($r && ($x = $r->fetch_assoc())) $rows[] = ['kind' => 'article'] + $x;
-    $r = $db->query("SELECT id, source_id, url, lastmod, attempts FROM url_queue WHERE status = 'pending' AND claimed_by = '$tok'");
+    $r = $db->query("SELECT id, source_id, url, lastmod, title_hint, published_hint, attempts FROM url_queue WHERE status = 'pending' AND claimed_by = '$tok'");
     while ($r && ($x = $r->fetch_assoc())) $rows[] = ['kind' => 'queue'] + $x;
 
     $map = ft_sources_map($db, array_column($rows, 'source_id'));

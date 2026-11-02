@@ -280,7 +280,7 @@ function detect_run(string $input, string $method, string $profile, string $tz):
             $cands[] = ['kind' => 'rss', 'label' => 'RSS feed', 'url' => $url, 'count' => count($parsed), 'items' => detect_candidate_items_feed($parsed), 'config' => [], 'avgchars' => (int)(array_sum(array_map(fn($i) => mb_strlen($i['content']), $parsed)) / max(1, count($parsed)))];
         }
         if ($sm = detect_read_sitemap($src, $url, $body)) {
-            $cands[] = ['kind' => 'sitemap', 'label' => 'Sitemap', 'url' => $url, 'count' => count($sm[0]), 'items' => array_map(fn($e) => ['title' => '', 'url' => $e['loc'], 'date' => $e['ts'] ? fmt_dt(gmdate('Y-m-d H:i:s', $e['ts'])) : '', 'chars' => null], array_slice($sm[0], 0, 8)), 'config' => [], 'note' => $sm[1]];
+            $cands[] = ['kind' => 'sitemap', 'label' => 'Sitemap', 'url' => $url, 'count' => count($sm[0]), 'items' => array_map(fn($e) => ['title' => $e['title'] ?? '', 'url' => $e['loc'], 'date' => ($e['pub'] ?? $e['ts']) ? fmt_dt(gmdate('Y-m-d H:i:s', $e['pub'] ?? $e['ts'])) : '', 'chars' => null], array_slice($sm[0], 0, 8)), 'config' => [], 'note' => trim($sm[1] . (array_filter(array_column($sm[0], 'title')) ? ' News sitemap: headline and date come from the map.' : ''))];
         }
     } else {
         // 1) список ссылок на самой странице
@@ -326,20 +326,25 @@ function detect_run(string $input, string $method, string $profile, string $tz):
             if ($sm = detect_read_sitemap($src, $mu, $b3)) {
                 $items = [];
                 foreach (array_slice($sm[0], 0, 8) as $i => $e) {
-                    $row = ['title' => '', 'url' => $e['loc'], 'date' => $e['ts'] ? fmt_dt(gmdate('Y-m-d H:i:s', $e['ts'])) : '', 'chars' => null];
+                    $d0 = $e['pub'] ?? $e['ts'];
+                    $row = ['title' => $e['title'] ?? '', 'url' => $e['loc'], 'date' => $d0 ? fmt_dt(gmdate('Y-m-d H:i:s', $d0)) : '', 'chars' => null];
                     if ($i < 2 && $left() > 12) {           // у первых двух открываем страницу: показать, что заголовок и текст извлекаются
-                        [$b4, $f4, , $ct4] = detect_fetch($src, $e['loc'], 'page');
+                        $sample = $src;
+                        if (($sample['fetch_method'] ?? 'http') === 'auto' && empty($sample['state'])) $sample['fetch_method'] = 'http';   // образцы страниц: без долгого ожидания проверки
+                        $sample['browser_timeout'] = 15;
+                        [$b4, $f4, , $ct4] = detect_fetch($sample, $e['loc'], 'page');
                         if (!$f4) {
                             $ex = ft_extract(ft_decode($b4, $ct4), ['tz' => $tz]);
-                            $row['title'] = $ex['title'];
+                            $row['title'] = $row['title'] ?: $ex['title'];
                             $row['chars'] = mb_strlen($ex['text']);
                         } else {
-                            $row['title'] = '(page not available: ' . $f4[1] . ')';
+                            $row['title'] = $row['title'] ?: '(page not available: ' . $f4[1] . ')';
+                            $row['note'] = 'page not available: ' . $f4[1];
                         }
                     }
                     $items[] = $row;
                 }
-                $cands[] = ['kind' => 'sitemap', 'label' => 'Sitemap', 'url' => $mu, 'count' => count($sm[0]), 'items' => $items, 'config' => [], 'note' => $sm[1]];
+                $cands[] = ['kind' => 'sitemap', 'label' => 'Sitemap', 'url' => $mu, 'count' => count($sm[0]), 'items' => $items, 'config' => [], 'note' => trim($sm[1] . (array_filter(array_column($sm[0], 'title')) ? ' News sitemap: headline and date come from the map.' : ''))];
                 break;
             }
         }
